@@ -13,6 +13,7 @@ struct HomeView: View {
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
     @State private var isShowingQRScanner = false
+    @State private var openedFolder: Folder?
     /// nil = 아직 불러오는 중
     @State private var folders: [Folder]?
 
@@ -22,6 +23,19 @@ struct HomeView: View {
     }
 
     var body: some View {
+        NavigationStack {
+            home
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(item: $openedFolder) { folder in
+                    FolderDetailView(
+                        folder: folder,
+                        avatarURL: profile?.avatarURL.flatMap(URL.init(string:))
+                    )
+                }
+        }
+    }
+
+    private var home: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
@@ -96,7 +110,7 @@ struct HomeView: View {
             FolderCollectionView(
                 folders: folders,
                 layout: layout,
-                onSelect: { _ in /* TODO: 폴더 상세 화면 */ },
+                onSelect: { openedFolder = $0 },
                 onInvite: { invitingFolder = $0 }
             )
             .refreshable { await reloadFolders() }
