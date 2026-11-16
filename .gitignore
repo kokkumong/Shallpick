@@ -54,3 +54,6 @@ GoogleService-Info.plist
 # Editors
 .vscode/
 .idea/
+
+# Local secrets (Kakao / Supabase keys)
+Config/Secrets.xcconfig

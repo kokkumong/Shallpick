@@ -6,7 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5A1C00010000000000000026 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1C00010000000000000022 /* Supabase */; };
+		5A1C00010000000000000027 /* KakaoSDKCommon in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1C00010000000000000023 /* KakaoSDKCommon */; };
+		5A1C00010000000000000028 /* KakaoSDKAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1C00010000000000000024 /* KakaoSDKAuth */; };
+		5A1C00010000000000000029 /* KakaoSDKUser in Frameworks */ = {isa = PBXBuildFile; productRef = 5A1C00010000000000000025 /* KakaoSDKUser */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		5A1C00010000000000000012 /* Shallpick.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shallpick.xcconfig; sourceTree = "<group>"; };
+		5A1C00010000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		5A1C00010000000000000001 /* Shallpick.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shallpick.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -23,6 +32,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A1C00010000000000000026 /* Supabase in Frameworks */,
+				5A1C00010000000000000027 /* KakaoSDKCommon in Frameworks */,
+				5A1C00010000000000000028 /* KakaoSDKAuth in Frameworks */,
+				5A1C00010000000000000029 /* KakaoSDKUser in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -33,8 +46,18 @@
 			isa = PBXGroup;
 			children = (
 				5A1C00010000000000000002 /* Shallpick */,
+				5A1C00010000000000000011 /* Config */,
 				5A1C00010000000000000004 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		5A1C00010000000000000011 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				5A1C00010000000000000012 /* Shallpick.xcconfig */,
+				5A1C00010000000000000013 /* Info.plist */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		5A1C00010000000000000004 /* Products */ = {
@@ -65,6 +88,10 @@
 			);
 			name = Shallpick;
 			packageProductDependencies = (
+				5A1C00010000000000000022 /* Supabase */,
+				5A1C00010000000000000023 /* KakaoSDKCommon */,
+				5A1C00010000000000000024 /* KakaoSDKAuth */,
+				5A1C00010000000000000025 /* KakaoSDKUser */,
 			);
 			productName = Shallpick;
 			productReference = 5A1C00010000000000000001 /* Shallpick.app */;
@@ -95,6 +122,10 @@
 			);
 			mainGroup = 5A1C00010000000000000003;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5A1C00010000000000000020 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				5A1C00010000000000000021 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5A1C00010000000000000004 /* Products */;
 			projectDirPath = "";
@@ -193,6 +224,7 @@
 		};
 		5A1C0001000000000000000C /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1C00010000000000000012 /* Shallpick.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -201,6 +233,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shallpick;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -226,6 +259,7 @@
 		};
 		5A1C0001000000000000000D /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 5A1C00010000000000000012 /* Shallpick.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -234,6 +268,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Config/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Shallpick;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -279,6 +314,48 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		5A1C00010000000000000020 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.55.0;
+			};
+		};
+		5A1C00010000000000000021 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kakao/kakao-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.27.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5A1C00010000000000000022 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A1C00010000000000000020 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+		5A1C00010000000000000023 /* KakaoSDKCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A1C00010000000000000021 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
+			productName = KakaoSDKCommon;
+		};
+		5A1C00010000000000000024 /* KakaoSDKAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A1C00010000000000000021 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
+			productName = KakaoSDKAuth;
+		};
+		5A1C00010000000000000025 /* KakaoSDKUser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5A1C00010000000000000021 /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
+			productName = KakaoSDKUser;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5A1C00010000000000000009 /* Project object */;
 }

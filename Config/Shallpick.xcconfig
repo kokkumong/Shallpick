@@ -1,0 +1,7 @@
+// 공개 저장소에 올리면 안 되는 값은 Secrets.xcconfig(gitignore)에 둡니다.
+// 처음 세팅할 때: cp Config/Secrets.example.xcconfig Config/Secrets.xcconfig
+KAKAO_NATIVE_APP_KEY =
+SUPABASE_URL =
+SUPABASE_KEY =
+
+#include? "Secrets.xcconfig"
