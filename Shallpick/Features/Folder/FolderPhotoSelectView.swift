@@ -72,11 +72,11 @@ struct FolderPhotoSelectView: View {
             FolderPhotoCell(photo: photo)
                 .overlay {
                     if isSelected {
-                        Rectangle().strokeBorder(Color.questionAccent, lineWidth: 3)
+                        Rectangle().strokeBorder(Color.questionAccentStrong, lineWidth: 4)
                     }
                 }
                 .overlay(alignment: .topLeading) {
-                    SelectionCheck(isOn: isSelected, tint: .questionAccent)
+                    SelectionCheck(isOn: isSelected, tint: .questionAccentStrong)
                 }
         }
         .buttonStyle(.plain)
