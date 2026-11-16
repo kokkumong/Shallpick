@@ -1,23 +1,42 @@
 import SwiftUI
 
-/// 흰 원형 배경 + 그림자 아이콘 버튼 (45pt). 메인 화면의 검색/알림/추가 버튼.
-/// Figma: Component 1 (120:2401 notice, 120:2402 search), Component 2 (148:12444 add)
+/// 원형 배경 + 그림자 아이콘 (45pt). Menu 라벨처럼 버튼이 아닌 곳에서도 씁니다.
+/// Figma: Component 1 (120:2401 notice, 120:2402 search, 148:11998 close, 148:12732 check),
+///        Component 2 (148:12444 add)
+struct CircleIcon: View {
+    enum Style {
+        /// 흰 배경 + 검정 아이콘
+        case plain
+        /// 검정 배경 + 흰 아이콘 (확인 버튼)
+        case filled
+    }
+
+    let icon: ImageResource
+    var iconSize: CGFloat = 24
+    var style: Style = .plain
+
+    var body: some View {
+        Image(icon)
+            .resizable()
+            .scaledToFit()
+            .frame(width: iconSize, height: iconSize)
+            .foregroundStyle(style == .filled ? Color.white : Color.black800)
+            .frame(width: 45, height: 45)
+            .background(style == .filled ? Color.black800 : Color.white, in: Circle())
+            .shallpickShadow()
+    }
+}
+
 struct CircleIconButton: View {
     let icon: ImageResource
     var iconSize: CGFloat = 24
+    var style: CircleIcon.Style = .plain
     let accessibilityLabel: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Image(icon)
-                .resizable()
-                .scaledToFit()
-                .frame(width: iconSize, height: iconSize)
-                .foregroundStyle(Color.black800)
-                .frame(width: 45, height: 45)
-                .background(.white, in: Circle())
-                .shallpickShadow()
+            CircleIcon(icon: icon, iconSize: iconSize, style: style)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
@@ -36,6 +55,8 @@ extension View {
         CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색") {}
         CircleIconButton(icon: .iconBell, accessibilityLabel: "알림") {}
         CircleIconButton(icon: .iconPlus, accessibilityLabel: "추가") {}
+        CircleIconButton(icon: .iconClose, accessibilityLabel: "닫기") {}
+        CircleIconButton(icon: .iconCheck, style: .filled, accessibilityLabel: "확인") {}
     }
     .padding(40)
     .background(Color.black50)

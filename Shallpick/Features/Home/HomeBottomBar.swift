@@ -9,7 +9,8 @@ enum FolderLayout: CaseIterable {
 struct HomeBottomBar: View {
     @Binding var layout: FolderLayout
     var onNotifications: () -> Void = {}
-    var onAddFolder: () -> Void = {}
+    var onCreateFolder: () -> Void = {}
+    var onJoinWithCode: () -> Void = {}
 
     var body: some View {
         HStack {
@@ -19,7 +20,14 @@ struct HomeBottomBar: View {
 
             HStack(spacing: 8) {
                 CircleIconButton(icon: .iconBell, accessibilityLabel: "알림", action: onNotifications)
-                CircleIconButton(icon: .iconPlus, accessibilityLabel: "폴더 추가", action: onAddFolder)
+                Menu {
+                    Button("새 폴더 만들기", systemImage: "folder.badge.plus", action: onCreateFolder)
+                    Button("코드로 참여하기", systemImage: "number", action: onJoinWithCode)
+                } label: {
+                    CircleIcon(icon: .iconPlus)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("폴더 추가")
             }
         }
         .padding(.horizontal, 24)

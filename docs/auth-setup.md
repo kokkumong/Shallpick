@@ -15,7 +15,9 @@
 ## 2. Supabase
 
 1. [supabase.com](https://supabase.com/dashboard) 에서 프로젝트 생성
-2. **SQL Editor** 에서 `supabase/migrations/20261116000000_create_profiles.sql` 내용 실행
+2. **SQL Editor** 에서 `supabase/migrations/` 의 파일을 이름 순서대로 실행
+   - `20261116000000_create_profiles.sql` (프로필)
+   - `20261116010000_create_folders.sql` (폴더 / 초대 코드)
    (Supabase CLI 를 쓰면 `supabase link` 후 `supabase db push`)
 3. **Authentication > Sign In / Providers > Kakao** 활성화
    - **REST API Key (Client ID)**: `REST_API_키,네이티브_앱_키` ← 쉼표로 두 개 입력

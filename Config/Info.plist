@@ -12,6 +12,14 @@
 				<string>kakao$(KAKAO_NATIVE_APP_KEY)</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>invite</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>shallpick</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
