@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 메시지형 알림 (보낸 사람 사진이 왼쪽 큰 아이콘). 실제 기기는 유료 Apple Developer 계정 필요 -->
+	<key>com.apple.developer.usernotifications.communication</key>
+	<true/>
+</dict>
+</plist>

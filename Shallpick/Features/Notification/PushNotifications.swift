@@ -1,3 +1,4 @@
+import Intents
 import Observation
 import UIKit
 import UserNotifications
@@ -74,7 +75,50 @@ enum LocalNotifications {
             content.userInfo = [PushPayloadKey.folderID: folder.id.uuidString]
         }
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
-        let request = UNNotificationRequest(identifier: "test-\(UUID().uuidString)", content: content, trigger: trigger)
+        let request = UNNotificationRequest(
+            identifier: "test-\(UUID().uuidString)",
+            content: await messageStyled(content, senderName: "Shallpick", groupName: folder?.name),
+            trigger: trigger
+        )
         try await UNUserNotificationCenter.current().add(request)
+    }
+
+    /// 메시지형 알림: 왼쪽 큰 동그라미에 보낸 사람 사진(지금은 수달), 귀퉁이에 작은 앱 아이콘.
+    /// Communication Notifications 권한이 없으면(실제 기기 + 무료 계정 등) 원래 모양 그대로 보냅니다.
+    static func messageStyled(
+        _ content: UNMutableNotificationContent,
+        senderName: String,
+        groupName: String?
+    ) async -> UNNotificationContent {
+        let avatar = UIImage(resource: .notificationAvatar).pngData().map(INImage.init(imageData:))
+        let sender = INPerson(
+            personHandle: INPersonHandle(value: "shallpick-otter", type: .unknown),
+            nameComponents: nil,
+            displayName: senderName,
+            image: avatar,
+            contactIdentifier: nil,
+            customIdentifier: "shallpick-otter"
+        )
+        let intent = INSendMessageIntent(
+            recipients: nil,
+            outgoingMessageType: .outgoingMessageText,
+            content: content.body,
+            speakableGroupName: groupName.map { INSpeakableString(spokenPhrase: $0) },
+            conversationIdentifier: content.userInfo[PushPayloadKey.folderID] as? String,
+            serviceName: nil,
+            sender: sender,
+            attachments: nil
+        )
+        intent.setImage(avatar, forParameterNamed: \.sender)
+
+        let interaction = INInteraction(intent: intent, response: nil)
+        interaction.direction = .incoming
+        do {
+            try await interaction.donate()
+            return try content.updating(from: intent)
+        } catch {
+            print("[Push] 메시지형 알림으로 바꾸지 못해 기본 모양으로 보냄:", error)
+            return content
+        }
     }
 }

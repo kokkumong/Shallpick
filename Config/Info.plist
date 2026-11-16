@@ -27,6 +27,10 @@
 		<string>kakaolink</string>
 		<string>kakaoplus</string>
 	</array>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>INSendMessageIntent</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>초대 QR 코드를 찍어 폴더에 참여할 때 카메라를 사용해요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
