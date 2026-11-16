@@ -1,3 +1,4 @@
+import Photos
 import SwiftUI
 
 /// 폴더를 눌렀을 때 들어가는 화면: 사진 4열 그리드 + 상단(뒤로/이름/검색/채팅) + 하단(필터/수달/추가)
@@ -5,16 +6,38 @@ import SwiftUI
 struct FolderDetailView: View {
     let folder: Folder
     var avatarURL: URL?
-    /// 사진 기능이 생기면 채웁니다.
-    var photoURLs: [URL] = []
     var onSearch: () -> Void = {}
-    var onOtter: () -> Void = {}
-    var onAddPhoto: () -> Void = {}
+    /// 수달 → "질문에 첨부할 사진 선택" 에서 → 를 누르면 불립니다 (고른 순서대로).
+    var onAskQuestion: ([PhotoItem]) -> Void = { _ in }
 
     @Environment(\.dismiss) private var dismiss
+    @State private var photos: [PhotoItem]
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
     @State private var isShowingChat = false
+    @State private var isShowingPhotoPicker = false
+    @State private var isShowingQuestionPicker = false
+    @State private var upload: UploadProgress?
+    @State private var errorMessage: String?
+
+    private struct UploadProgress: Equatable {
+        var done: Int
+        let total: Int
+    }
+
+    init(
+        folder: Folder,
+        avatarURL: URL? = nil,
+        photos: [PhotoItem] = [],
+        onSearch: @escaping () -> Void = {},
+        onAskQuestion: @escaping ([PhotoItem]) -> Void = { _ in }
+    ) {
+        self.folder = folder
+        self.avatarURL = avatarURL
+        self.onSearch = onSearch
+        self.onAskQuestion = onAskQuestion
+        _photos = State(initialValue: photos)
+    }
 
     var body: some View {
         content
@@ -30,19 +53,89 @@ struct FolderDetailView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) { header }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
+            .overlay(alignment: .top) { uploadBanner }
             .toolbar(.hidden, for: .navigationBar)
             .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
+            .animation(.snappy(duration: 0.2), value: upload)
             .navigationDestination(isPresented: $isShowingChat) {
                 ChatView(folder: folder)
             }
+            // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
+            .sheet(isPresented: $isShowingPhotoPicker) {
+                PhotoPickerSheet { assets in
+                    Task { await uploadPhotos(assets) }
+                }
+                .presentationDetents([.large])
+                .presentationCornerRadius(36)
+                .presentationDragIndicator(.hidden)
+            }
+            // 수달 : 폴더 사진 중에서 질문에 첨부할 사진 고르기 (Figma 328:4864)
+            .fullScreenCover(isPresented: $isShowingQuestionPicker) {
+                FolderPhotoSelectView(photos: photos, avatarURL: avatarURL, onNext: onAskQuestion)
+            }
+            .alert(
+                "문제가 생겼어요",
+                isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+            ) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text(errorMessage ?? "")
+            }
+            .task { await reload() }
     }
 
     @ViewBuilder
     private var content: some View {
-        if photoURLs.isEmpty {
+        if photos.isEmpty {
             EmptyPhotoView()
         } else {
-            PhotoGrid(urls: photoURLs)
+            PhotoGrid(photos: photos.filtered(by: filters))
+                .refreshable { await reload() }
+        }
+    }
+
+    private func reload() async {
+        guard SupabaseManager.client != nil else { return }
+        do {
+            photos = try await PhotoRepository.fetch(folderID: folder.id)
+        } catch is CancellationError {
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func uploadPhotos(_ assets: [PHAsset]) async {
+        guard !assets.isEmpty else { return }
+        upload = UploadProgress(done: 0, total: assets.count)
+        defer { upload = nil }
+        do {
+            try await PhotoRepository.upload(assets, to: folder.id) { done in
+                upload?.done = done
+            }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        await reload()
+    }
+
+    /// 올리는 동안 위에 뜨는 작은 알림
+    @ViewBuilder
+    private var uploadBanner: some View {
+        if let upload {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("사진 올리는 중 \(upload.done)/\(upload.total)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.black800)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(.white, in: Capsule())
+            .shallpickShadow(blur: 20)
+            .padding(.top, 74)
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
@@ -69,17 +162,7 @@ struct FolderDetailView: View {
         .padding(.horizontal, 24)
         .padding(.top, 11)
         .padding(.bottom, 35)
-        .background {
-            LinearGradient(
-                stops: [
-                    .init(color: .black50, location: 0.279),
-                    .init(color: .black50.opacity(0), location: 1),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .top)
-        }
+        .background(alignment: .top) { TopFade() }
     }
 
     // MARK: - 하단 (190:22267)
@@ -87,40 +170,74 @@ struct FolderDetailView: View {
     private var bottomBar: some View {
         HStack {
             HStack(spacing: 8) {
-                filterButton
-                OtterButton(action: onOtter)
+                PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
+                OtterButton(accessibilityLabel: "질문에 첨부할 사진 고르기") {
+                    isShowingFilterMenu = false
+                    isShowingQuestionPicker = true
+                }
             }
 
             Spacer()
 
-            CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 추가", action: onAddPhoto)
+            CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
+                isShowingFilterMenu = false
+                isShowingPhotoPicker = true
+            }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 33)
-        .background {
-            LinearGradient(
-                stops: [
-                    .init(color: .black50.opacity(0), location: 0),
-                    .init(color: .black50, location: 0.889),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .bottom)
-        }
+        .background { BottomFade() }
     }
+}
 
-    /// 열려 있으면 X, 닫혀 있으면 필터 아이콘. 메뉴는 버튼 12pt 위에 뜸 (162:20993)
-    private var filterButton: some View {
+// MARK: - 공용 조각 (폴더 화면 / 사진 고르기 화면)
+
+/// 위쪽: black50 에서 투명으로
+struct TopFade: View {
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .black50, location: 0.279),
+                .init(color: .black50.opacity(0), location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea(edges: .top)
+    }
+}
+
+/// 아래쪽: 투명에서 black50 으로
+struct BottomFade: View {
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .black50.opacity(0), location: 0),
+                .init(color: .black50, location: 0.889),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea(edges: .bottom)
+    }
+}
+
+/// 열려 있으면 X, 닫혀 있으면 필터 아이콘. 메뉴는 버튼 12pt 위에 뜸 (162:20993)
+struct PhotoFilterButton: View {
+    @Binding var isOpen: Bool
+    @Binding var selection: Set<PhotoFilter>
+    var avatarURL: URL?
+
+    var body: some View {
         CircleIconButton(
-            icon: isShowingFilterMenu ? .iconClose : .iconFilter,
-            accessibilityLabel: isShowingFilterMenu ? "필터 닫기" : "필터"
+            icon: isOpen ? .iconClose : .iconFilter,
+            accessibilityLabel: isOpen ? "필터 닫기" : "필터"
         ) {
-            isShowingFilterMenu.toggle()
+            isOpen.toggle()
         }
         .overlay(alignment: .bottomLeading) {
-            if isShowingFilterMenu {
-                PhotoFilterMenu(selection: $filters, avatarURL: avatarURL)
+            if isOpen {
+                PhotoFilterMenu(selection: $selection, avatarURL: avatarURL)
                     .fixedSize()
                     .offset(y: -(45 + 12))
                     .transition(.scale(scale: 0.9, anchor: .bottomLeading).combined(with: .opacity))
@@ -130,28 +247,45 @@ struct FolderDetailView: View {
     }
 }
 
+/// 폴더 사진 한 칸 (정사각형)
+struct FolderPhotoCell: View {
+    let photo: PhotoItem
+
+    var body: some View {
+        Color.blue50
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                AsyncImage(url: photo.url) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Color.clear
+                }
+            }
+            .clipped()
+    }
+}
+
+extension [PhotoItem] {
+    /// "내사진" 은 내가 올린 것만. "좋아요" 는 좋아요 기능이 생기면 적용합니다.
+    func filtered(by filters: Set<PhotoFilter>) -> [PhotoItem] {
+        guard filters.contains(.mine), let me = PhotoRepository.currentUserID else { return self }
+        return filter { $0.uploaderID == me }
+    }
+}
+
 // MARK: - 사진 그리드
 
 /// 4열 정사각형, 간격 10 (246:5209)
 private struct PhotoGrid: View {
-    let urls: [URL]
+    let photos: [PhotoItem]
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
 
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
-                ForEach(urls, id: \.self) { url in
-                    Color.blue50
-                        .aspectRatio(1, contentMode: .fit)
-                        .overlay {
-                            AsyncImage(url: url) { image in
-                                image.resizable().scaledToFill()
-                            } placeholder: {
-                                Color.clear
-                            }
-                        }
-                        .clipped()
+                ForEach(photos) { photo in
+                    FolderPhotoCell(photo: photo)
                 }
             }
             .padding(.horizontal, 24)
@@ -193,7 +327,7 @@ enum PhotoFilter: Hashable {
 }
 
 /// 좋아요 / 내사진 / 필터 모두 삭제 (162:20872)
-private struct PhotoFilterMenu: View {
+struct PhotoFilterMenu: View {
     @Binding var selection: Set<PhotoFilter>
     var avatarURL: URL?
 
@@ -260,12 +394,23 @@ private struct PhotoFilterMenu: View {
 
 // MARK: - Preview
 
+extension PhotoItem {
+    static let previews: [PhotoItem] = (1...40).map { index in
+        let folderID = Folder.previews[0].id
+        return PhotoItem(
+            id: UUID(),
+            folderID: folderID,
+            uploaderID: UUID(),
+            storagePath: "\(folderID)/\(index).jpg",
+            createdAt: .now,
+            url: URL(string: "https://picsum.photos/seed/\(index)/200")
+        )
+    }
+}
+
 #Preview("사진 있음") {
     NavigationStack {
-        FolderDetailView(
-            folder: Folder.previews[0],
-            photoURLs: (1...40).compactMap { URL(string: "https://picsum.photos/seed/\($0)/200") }
-        )
+        FolderDetailView(folder: Folder.previews[0], photos: PhotoItem.previews)
     }
 }
 

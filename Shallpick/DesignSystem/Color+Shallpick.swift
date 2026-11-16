@@ -13,6 +13,8 @@ extension Color {
     static let brandBlue = Color(hex: 0x96BCD4)
     /// 그리드/리스트 선택 표시
     static let segmentSelected = Color(hex: 0x9EBBD2)
+    /// 질문에 첨부할 사진 고르기: → 버튼, 선택 체크, 선택 테두리
+    static let questionAccent = Color(hex: 0xA7BAD1)
 
     /// 폴더 앞면 그라데이션 (Figma: bluegradient) 과 그 위 글자색
     static let folderBlueBottom = Color(hex: 0x6F9CC2)
