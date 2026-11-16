@@ -51,6 +51,10 @@ struct HomeView: View {
                 path = [.folder(alert.folder), .chat(alert.folder)]
             }
         }
+        // 폴더 화면에서 사진을 올리고 돌아오면 표지도 새로
+        .onChange(of: path.isEmpty) { _, isBackHome in
+            if isBackHome { Task { await reloadCovers() } }
+        }
         .task(id: userID) { await listenForQuestions() }
         .task(id: userID) { await LocalNotifications.requestAuthorization() }
         // 앱 밖 알림을 눌러 들어오면 그 폴더 채팅으로
@@ -249,12 +253,38 @@ struct HomeView: View {
 
     private func reloadFolders() async {
         do {
-            let loaded = try await FolderRepository.fetchMine()
+            var loaded = try await FolderRepository.fetchMine()
+            // 표지 사진은 이미 받은 게 있으면 우선 그대로 보여 줌
+            let previousCovers = Dictionary(
+                (folders ?? []).map { ($0.id, $0.coverPhotoURLs) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            for index in loaded.indices {
+                loaded[index].coverPhotoURLs = previousCovers[loaded[index].id] ?? []
+            }
             withAnimation(.snappy) { folders = loaded }
+            await reloadCovers()
         } catch is CancellationError {
         } catch {
             print("[Folder] 목록 불러오기 실패:", error)
             if folders == nil { folders = [] }
+        }
+    }
+
+    /// 폴더 카드에 꽂힐 최신 사진들
+    private func reloadCovers() async {
+        guard let current = folders, !current.isEmpty else { return }
+        do {
+            let covers = try await PhotoRepository.fetchCovers(folderIDs: current.map(\.id))
+            guard var updated = folders else { return }
+            for index in updated.indices {
+                updated[index].coverPhotoURLs = covers[updated[index].id] ?? []
+            }
+            guard updated != folders else { return }
+            withAnimation(.snappy) { folders = updated }
+        } catch is CancellationError {
+        } catch {
+            print("[Folder] 표지 사진 불러오기 실패:", error)
         }
     }
 }

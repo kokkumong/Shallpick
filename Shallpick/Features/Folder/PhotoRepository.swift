@@ -66,17 +66,75 @@ enum PhotoRepository {
             .value
         guard !photos.isEmpty else { return [] }
 
-        let signed = try await client.storage
-            .from(bucket)
-            .createSignedURLs(paths: photos.map(\.storagePath), expiresIn: 60 * 60)
-        let urlByPath = Dictionary(
-            signed.compactMap { result in result.signedURL.map { (result.path, $0) } },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let urlByPath = try await signedURLs(for: photos.map(\.storagePath))
         for index in photos.indices {
             photos[index].url = urlByPath[photos[index].storagePath]
         }
         return photos
+    }
+
+    private nonisolated struct CoverRow: Decodable, Sendable {
+        let folder_id: UUID
+        let storage_path: String
+    }
+
+    /// 서명 주소 재사용 (같은 주소면 이미지를 다시 받지 않음). 만료 10분 전까지만 씀
+    private static var signedURLCache: [String: (url: URL, expiresAt: Date)] = [:]
+    private static let signedURLLifetime: TimeInterval = 60 * 60
+
+    /// 메인 화면 폴더 표지용: 폴더마다 최신 사진 `limit` 장의 서명 주소
+    static func fetchCovers(folderIDs: [UUID], limit: Int = 4) async throws -> [UUID: [URL]] {
+        guard !folderIDs.isEmpty else { return [:] }
+        let client = try client
+
+        // 폴더마다 최신 limit 장만 (동시에)
+        let rows = try await withThrowingTaskGroup(of: [CoverRow].self) { group in
+            for folderID in folderIDs {
+                group.addTask {
+                    try await client
+                        .from("photos")
+                        .select("folder_id, storage_path")
+                        .eq("folder_id", value: folderID)
+                        .order("created_at", ascending: false)
+                        .limit(limit)
+                        .execute()
+                        .value
+                }
+            }
+            var all: [CoverRow] = []
+            for try await folderRows in group { all += folderRows }
+            return all
+        }
+        let urlByPath = try await signedURLs(for: rows.map(\.storage_path))
+
+        var covers: [UUID: [URL]] = [:]
+        // 그룹 결과 순서는 섞이므로 폴더별로 다시 묶되, 폴더 안 순서(최신 순)는 유지됨
+        for row in rows {
+            if let url = urlByPath[row.storage_path] {
+                covers[row.folder_id, default: []].append(url)
+            }
+        }
+        return covers
+    }
+
+    /// 아직 쓸 수 있는 주소는 재사용하고 나머지만 한 번에 서명
+    private static func signedURLs(for paths: [String]) async throws -> [String: URL] {
+        let freshUntil = Date().addingTimeInterval(10 * 60)
+        let missing = paths.filter { (signedURLCache[$0]?.expiresAt ?? .distantPast) <= freshUntil }
+        if !missing.isEmpty {
+            let expiresAt = Date().addingTimeInterval(signedURLLifetime)
+            let signed = try await client.storage
+                .from(bucket)
+                .createSignedURLs(paths: missing, expiresIn: Int(signedURLLifetime))
+            for result in signed {
+                if let url = result.signedURL {
+                    signedURLCache[result.path] = (url, expiresAt)
+                }
+            }
+        }
+        return paths.reduce(into: [:]) { result, path in
+            result[path] = signedURLCache[path]?.url
+        }
     }
 
     /// 보관함 사진들을 차례로 올립니다. 하나 끝날 때마다 onProgress(올린 개수)
