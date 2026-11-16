@@ -8,13 +8,13 @@ struct FolderDetailView: View {
     /// 사진 기능이 생기면 채웁니다.
     var photoURLs: [URL] = []
     var onSearch: () -> Void = {}
-    var onChat: () -> Void = {}
     var onOtter: () -> Void = {}
     var onAddPhoto: () -> Void = {}
 
     @Environment(\.dismiss) private var dismiss
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
+    @State private var isShowingChat = false
 
     var body: some View {
         content
@@ -32,6 +32,9 @@ struct FolderDetailView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             .toolbar(.hidden, for: .navigationBar)
             .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
+            .navigationDestination(isPresented: $isShowingChat) {
+                ChatView(folder: folder)
+            }
     }
 
     @ViewBuilder
@@ -59,7 +62,7 @@ struct FolderDetailView: View {
 
             HStack(spacing: 8) {
                 CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
-                CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅", action: onChat)
+                CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") { isShowingChat = true }
             }
         }
         .frame(height: 52)
@@ -85,7 +88,7 @@ struct FolderDetailView: View {
         HStack {
             HStack(spacing: 8) {
                 filterButton
-                otterButton
+                OtterButton(action: onOtter)
             }
 
             Spacer()
@@ -124,23 +127,6 @@ struct FolderDetailView: View {
             }
         }
         .zIndex(1)
-    }
-
-    /// Component 3 (179:22169): 흰 동그라미 안에 수달
-    private var otterButton: some View {
-        Button(action: onOtter) {
-            Image(.otterQuestion)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 53, height: 55)
-                .offset(x: 1, y: 4)
-                .frame(width: 45, height: 45)
-                .background(.white)
-                .clipShape(Circle())
-                .shallpickShadow()
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("수달")
     }
 }
 

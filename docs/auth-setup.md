@@ -19,6 +19,7 @@
    - `20261116000000_create_profiles.sql` (프로필)
    - `20261116010000_create_folders.sql` (폴더 / 초대 코드)
    - `20261116020000_my_folders.sql` (메인 화면 폴더 목록)
+   - `20261116030000_create_messages.sql` (폴더 채팅 + Realtime)
    (Supabase CLI 를 쓰면 `supabase link` 후 `supabase db push`)
 3. **Authentication > Sign In / Providers > Kakao** 활성화
    - **REST API Key (Client ID)**: `REST_API_키,네이티브_앱_키` ← 쉼표로 두 개 입력
