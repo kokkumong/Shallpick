@@ -51,6 +51,7 @@ struct HomeBottomBar: View {
 /// Segment_Grid (148:9617)
 struct FolderLayoutPicker: View {
     @Binding var selection: FolderLayout
+    @Namespace private var indicator
 
     var body: some View {
         HStack(spacing: 0) {
@@ -63,9 +64,16 @@ struct FolderLayoutPicker: View {
                         Text(title(for: layout))
                             .font(.system(size: 10, weight: .semibold))
                     }
-                    .foregroundStyle(Color.black800)
+                    .foregroundStyle(selection == layout ? Color.white : Color.black800)
                     .frame(width: 62, height: 39)
-                    .background(selection == layout ? Color.blue50 : .white, in: Capsule())
+                    .background {
+                        // 스위치처럼 선택한 쪽으로 동그라미가 미끄러져 감
+                        if selection == layout {
+                            Capsule()
+                                .fill(Color.segmentSelected)
+                                .matchedGeometryEffect(id: "selected", in: indicator)
+                        }
+                    }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)

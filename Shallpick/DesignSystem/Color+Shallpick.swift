@@ -7,6 +7,8 @@ extension Color {
     static let black800 = Color(hex: 0x282828)
     static let blue50 = Color(hex: 0xF3F8FB)
     static let brandBlue = Color(hex: 0x96BCD4)
+    /// 그리드/리스트 선택 표시
+    static let segmentSelected = Color(hex: 0x9EBBD2)
 
     /// 폴더 앞면 그라데이션 (Figma: bluegradient) 과 그 위 글자색
     static let folderBlueBottom = Color(hex: 0x6F9CC2)
