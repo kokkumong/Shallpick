@@ -13,6 +13,8 @@ struct HomeView: View {
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
     @State private var isShowingQRScanner = false
+    @State private var isSearching = false
+    @State private var searchText = ""
     @State private var openedFolder: Folder?
     /// nil = 아직 불러오는 중
     @State private var folders: [Folder]?
@@ -42,7 +44,8 @@ struct HomeView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeHeader(
                     avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
-                    onSearch: {},
+                    searchText: $searchText,
+                    isSearching: $isSearching,
                     onProfile: { isShowingAccountMenu = true }
                 )
             }
@@ -107,14 +110,23 @@ struct HomeView: View {
         case let folders? where folders.isEmpty:
             EmptyFolderView()
         case let folders?:
+            let results = folders.matching(searchText)
+            // 결과가 없어도 목록(ScrollView)은 그대로 둬야 입력 중 키보드가 내려가지 않음
             FolderCollectionView(
-                folders: folders,
+                folders: results,
                 layout: layout,
                 onSelect: { openedFolder = $0 },
                 onInvite: { invitingFolder = $0 }
             )
             .refreshable { await reloadFolders() }
+            .overlay {
+                if results.isEmpty {
+                    NoSearchResultView(query: searchText)
+                        .transition(.opacity)
+                }
+            }
             .animation(.snappy(duration: 0.3), value: layout)
+            .animation(.snappy(duration: 0.25), value: searchText)
         }
     }
 
@@ -154,6 +166,47 @@ private extension HomeView {
         case nil:
             EmptyView()
         }
+    }
+}
+
+extension [Folder] {
+    /// 폴더 이름 또는 참여자 이름에 검색어가 들어간 폴더만. 검색어가 비면 전부.
+    func matching(_ query: String) -> [Folder] {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return self }
+        return filter { folder in
+            folder.name.localizedStandardContains(query)
+                || folder.memberNames.contains { $0.localizedStandardContains(query) }
+        }
+    }
+}
+
+/// 검색 결과가 없을 때
+struct NoSearchResultView: View {
+    let query: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(.otterQuestion)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 140, height: 140)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 2) {
+                Text("검색 결과가 없어요")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(Color.black800)
+                Text("‘\(query)’ 이(가) 들어간 폴더나 참여자가 없어요")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.black400)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
+        }
+        // 키보드에 가리지 않게 위쪽에 둠
+        .frame(maxHeight: .infinity, alignment: .top)
+        .padding(.top, 40)
     }
 }
 
