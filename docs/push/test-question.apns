@@ -1,0 +1,12 @@
+{
+  "Simulator Target Bundle": "com.kokkumong.Shallpick",
+  "aps": {
+    "alert": {
+      "title": "Shallpick",
+      "subtitle": "폴더 이름",
+      "body": "test"
+    },
+    "sound": "default"
+  },
+  "folder_id": "여기에-폴더-UUID"
+}

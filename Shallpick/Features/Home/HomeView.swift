@@ -18,6 +18,7 @@ struct HomeView: View {
     /// 폴더 → 채팅 순으로 쌓이는 화면 경로
     @State private var path: [HomeRoute] = []
     @State private var questionAlerts = QuestionAlertCenter()
+    @State private var notificationNotice: String?
     /// nil = 아직 불러오는 중
     @State private var folders: [Folder]?
 
@@ -51,6 +52,20 @@ struct HomeView: View {
             }
         }
         .task(id: userID) { await listenForQuestions() }
+        .task(id: userID) { await LocalNotifications.requestAuthorization() }
+        // 앱 밖 알림을 눌러 들어오면 그 폴더 채팅으로
+        .onChange(of: NotificationRouter.shared.pendingFolderID, initial: true) { _, folderID in
+            guard let folderID else { return }
+            Task { await openChat(folderID: folderID) }
+        }
+        .alert(
+            "알림",
+            isPresented: Binding(get: { notificationNotice != nil }, set: { if !$0 { notificationNotice = nil } })
+        ) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(notificationNotice ?? "")
+        }
     }
 
     private var home: some View {
@@ -110,6 +125,9 @@ struct HomeView: View {
                 isPresented: $isShowingAccountMenu,
                 titleVisibility: .visible
             ) {
+                Button("테스트 알림 보내기 (5초 뒤)") {
+                    Task { await sendTestNotification() }
+                }
                 Button("로그아웃", role: .destructive, action: onSignOut)
             }
             .task(id: userID) {
@@ -178,6 +196,29 @@ struct HomeView: View {
             }
         }
         await subscription.close()
+    }
+
+    private func openChat(folderID: UUID) async {
+        NotificationRouter.shared.pendingFolderID = nil
+        if folders?.contains(where: { $0.id == folderID }) != true {
+            await reloadFolders()
+        }
+        guard let folder = folders?.first(where: { $0.id == folderID }) else { return }
+        path = [.folder(folder), .chat(folder)]
+    }
+
+    /// 계정 메뉴의 테스트 알림. 5초 안에 홈 화면으로 나가면 앱 밖 알림으로 보임
+    private func sendTestNotification() async {
+        guard await LocalNotifications.requestAuthorization() else {
+            notificationNotice = "알림 권한이 꺼져 있어요. 설정 > Shallpick > 알림에서 켜 주세요."
+            return
+        }
+        do {
+            try await LocalNotifications.scheduleTest(folder: folders?.first)
+            notificationNotice = "5초 뒤에 테스트 알림이 와요. 홈 화면으로 나가서 확인해 보세요."
+        } catch {
+            notificationNotice = "테스트 알림을 보내지 못했어요: \(error.localizedDescription)"
+        }
     }
 
     private func isViewingChat(of folderID: UUID) -> Bool {

@@ -6,6 +6,8 @@ import SwiftUI
 
 @main
 struct ShallpickApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     init() {
         if let appKey = AppConfig.kakaoNativeAppKey {
             KakaoSDK.initSDK(appKey: appKey)
