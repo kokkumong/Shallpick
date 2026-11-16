@@ -157,19 +157,27 @@ struct FolderDetailView: View {
         HStack(spacing: 0) {
             CircleIconButton(icon: .iconBack, accessibilityLabel: "뒤로") { dismiss() }
 
-            Text(folder.name)
-                .font(.system(size: 20, weight: .bold))
+            // 제목 + ⌄ : 누르면 초대 QR / 참여 코드
+            Button { isShowingInvite = true } label: {
+                HStack(spacing: 4) {
+                    Text(folder.name)
+                        .font(.system(size: 20, weight: .bold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .bold))
+                }
                 .foregroundStyle(Color.black800)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .accessibilityAddTraits(.isHeader)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(folder.name)
+            .accessibilityHint("초대 QR 코드와 참여 코드를 보여줘요")
+            .accessibilityAddTraits(.isHeader)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
 
             HStack(spacing: 8) {
                 CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
-                CircleIconButton(icon: .iconPersonAdd, accessibilityLabel: "사람 초대") {
-                    isShowingInvite = true
-                }
                 CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
                     if let onOpenChat { onOpenChat() } else { isShowingChat = true }
                 }
