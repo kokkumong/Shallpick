@@ -1,0 +1,21 @@
+{
+  "summary": "예시입니다. 실제 사용자 상황과 변경 결과로 교체하세요.",
+  "changes": [
+    { "before": "변경 전의 구체적인 동작", "after": "변경 후의 구체적인 동작" }
+  ],
+  "rules": [
+    { "name": "관련 정책 ID 또는 이름", "evidence": "어떻게 적용했고 무엇으로 확인했는지" }
+  ],
+  "uiChanged": false,
+  "visualNote": "예시는 문서 변경입니다. 실제 UI 변경이면 uiChanged를 true로 바꾸고 캡처를 추가하세요.",
+  "screenshots": [],
+  "checks": [
+    { "name": "실행한 검사 또는 과업", "status": "not-run", "detail": "아직 실행하지 않은 예시입니다." }
+  ],
+  "prototype": {
+    "status": "not-deployed",
+    "note": "설치 가능한 빌드를 아직 배포하지 않았습니다."
+  },
+  "remaining": ["실제 검증 결과로 교체하세요."],
+  "draft": true
+}

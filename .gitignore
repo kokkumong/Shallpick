@@ -54,3 +54,11 @@ GoogleService-Info.plist
 # Editors
 .vscode/
 .idea/
+
+# Local AI reports and signing material
+.local/
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+*.provisionprofile
