@@ -116,7 +116,7 @@ struct FolderGridCard: View {
 }
 
 /// 폴더 뒷면 (탭이 달린 모양, 148:8281)
-private nonisolated struct FolderBackShape: Shape {
+nonisolated struct FolderBackShape: Shape {
     func path(in rect: CGRect) -> Path {
         // Figma 원본 좌표 (150 × 130.22) 를 rect 크기에 맞춰 늘림
         let sx = rect.width / 150, sy = rect.height / 130.22

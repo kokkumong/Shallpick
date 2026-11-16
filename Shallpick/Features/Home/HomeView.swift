@@ -15,7 +15,9 @@ struct HomeView: View {
     @State private var isShowingQRScanner = false
     @State private var isSearching = false
     @State private var searchText = ""
-    @State private var openedFolder: Folder?
+    /// 폴더 → 채팅 순으로 쌓이는 화면 경로
+    @State private var path: [HomeRoute] = []
+    @State private var questionAlerts = QuestionAlertCenter()
     /// nil = 아직 불러오는 중
     @State private var folders: [Folder]?
 
@@ -25,16 +27,30 @@ struct HomeView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             home
                 .toolbar(.hidden, for: .navigationBar)
-                .navigationDestination(item: $openedFolder) { folder in
-                    FolderDetailView(
-                        folder: folder,
-                        avatarURL: profile?.avatarURL.flatMap(URL.init(string:))
-                    )
+                .navigationDestination(for: HomeRoute.self) { route in
+                    switch route {
+                    case let .folder(folder):
+                        FolderDetailView(
+                            folder: folder,
+                            avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
+                            onOpenChat: { path.append(.chat(folder)) }
+                        )
+                    case let .chat(folder):
+                        ChatView(folder: folder)
+                    }
                 }
         }
+        // 어느 화면에 있든 가운데에 뜨도록 내비게이션 바깥에 둠
+        .overlay {
+            QuestionAlertOverlay(center: questionAlerts) { alert in
+                // 바로 응답하기: 그 폴더 → 채팅으로 바로 이동 (뒤로 가면 폴더 화면)
+                path = [.folder(alert.folder), .chat(alert.folder)]
+            }
+        }
+        .task(id: userID) { await listenForQuestions() }
     }
 
     private var home: some View {
@@ -115,7 +131,7 @@ struct HomeView: View {
             FolderCollectionView(
                 folders: results,
                 layout: layout,
-                onSelect: { openedFolder = $0 },
+                onSelect: { path.append(.folder($0)) },
                 onInvite: { invitingFolder = $0 }
             )
             .refreshable { await reloadFolders() }
@@ -130,6 +146,66 @@ struct HomeView: View {
         }
     }
 
+    /// 다른 멤버가 내 폴더에 보낸 새 메시지를 앱 안 알림으로 띄움.
+    /// 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
+    private func listenForQuestions() async {
+        #if DEBUG
+        // 실행 인자 -demoQuestionAlert 로 알림 모양 확인
+        if ProcessInfo.processInfo.arguments.contains("-demoQuestionAlert") {
+            try? await Task.sleep(for: .seconds(2))
+            questionAlerts.present(QuestionAlert(
+                id: UUID(),
+                folder: folders?.first ?? Folder.previews[0],
+                askerNickname: "현서",
+                question: "이 사진 인스타 스토리에 올려도 돼?",
+                photoURLs: (1...3).compactMap { URL(string: "https://picsum.photos/seed/\($0)/300/400") }
+            ))
+        }
+        #endif
+        guard SupabaseManager.client != nil else { return }
+        let subscription: ChatRepository.Subscription
+        do {
+            subscription = try await ChatRepository.subscribe(folderID: nil)
+        } catch {
+            if !(error is CancellationError) { print("[QuestionAlert] 구독 실패:", error) }
+            return
+        }
+
+        for await message in subscription.messages {
+            guard message.userID != userID, !isViewingChat(of: message.folderID) else { continue }
+            if let alert = await makeAlert(for: message), !isViewingChat(of: message.folderID) {
+                questionAlerts.present(alert)
+            }
+        }
+        await subscription.close()
+    }
+
+    private func isViewingChat(of folderID: UUID) -> Bool {
+        if case let .chat(folder)? = path.last { return folder.id == folderID }
+        return false
+    }
+
+    private func makeAlert(for message: ChatMessage) async -> QuestionAlert? {
+        var folder = folders?.first { $0.id == message.folderID }
+        if folder == nil {
+            // 방금 참여한 폴더일 수 있음
+            await reloadFolders()
+            folder = folders?.first { $0.id == message.folderID }
+        }
+        guard let folder else { return nil }
+
+        async let members = try? ChatRepository.fetchMembers(folderID: folder.id)
+        async let photos = try? PhotoRepository.fetch(folderID: folder.id)
+        let nickname = await members?.first { $0.userID == message.userID }?.nickname ?? "샬픽 사용자"
+        return QuestionAlert(
+            id: message.id,
+            folder: folder,
+            askerNickname: nickname,
+            question: message.body,
+            photoURLs: Array((await photos ?? []).compactMap(\.url).prefix(3))
+        )
+    }
+
     private func reloadFolders() async {
         do {
             let loaded = try await FolderRepository.fetchMine()
@@ -140,6 +216,12 @@ struct HomeView: View {
             if folders == nil { folders = [] }
         }
     }
+}
+
+/// 메인 화면에서 쌓이는 화면
+enum HomeRoute: Hashable {
+    case folder(Folder)
+    case chat(Folder)
 }
 
 private extension HomeView {

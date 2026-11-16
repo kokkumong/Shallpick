@@ -9,6 +9,8 @@ struct FolderDetailView: View {
     var onSearch: () -> Void = {}
     /// 수달 → "질문에 첨부할 사진 선택" 에서 → 를 누르면 불립니다 (고른 순서대로).
     var onAskQuestion: ([PhotoItem]) -> Void = { _ in }
+    /// 채팅 버튼. 주면 밖(HomeView 의 내비게이션 경로)에서 채팅을 열고, 없으면 이 화면에서 엽니다.
+    var onOpenChat: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var photos: [PhotoItem]
@@ -30,12 +32,14 @@ struct FolderDetailView: View {
         avatarURL: URL? = nil,
         photos: [PhotoItem] = [],
         onSearch: @escaping () -> Void = {},
-        onAskQuestion: @escaping ([PhotoItem]) -> Void = { _ in }
+        onAskQuestion: @escaping ([PhotoItem]) -> Void = { _ in },
+        onOpenChat: (() -> Void)? = nil
     ) {
         self.folder = folder
         self.avatarURL = avatarURL
         self.onSearch = onSearch
         self.onAskQuestion = onAskQuestion
+        self.onOpenChat = onOpenChat
         _photos = State(initialValue: photos)
     }
 
@@ -155,7 +159,9 @@ struct FolderDetailView: View {
 
             HStack(spacing: 8) {
                 CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
-                CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") { isShowingChat = true }
+                CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
+                    if let onOpenChat { onOpenChat() } else { isShowingChat = true }
+                }
             }
         }
         .frame(height: 52)

@@ -87,16 +87,18 @@ enum ChatRepository {
         let close: () async -> Void
     }
 
-    static func subscribe(folderID: UUID) async throws -> Subscription {
+    /// folderID 가 nil 이면 내가 참여한 모든 폴더의 새 메시지 (RLS 로 걸러짐) — 앱 안 질문 알림용
+    static func subscribe(folderID: UUID?) async throws -> Subscription {
         let client = try Self.client
         // SDK 는 같은 이름의 채널을 재사용하므로, 화면을 다시 열거나 다시 시도할 때
         // 이전 구독을 정리하면서 새 구독까지 닫히지 않게 매번 다른 이름을 씁니다.
-        let channel = client.channel("folder-chat:\(folderID.uuidString.lowercased()):\(UUID().uuidString.lowercased())")
+        let scope = folderID?.uuidString.lowercased() ?? "all"
+        let channel = client.channel("folder-chat:\(scope):\(UUID().uuidString.lowercased())")
         let inserts = channel.postgresChange(
             InsertAction.self,
             schema: "public",
             table: "messages",
-            filter: .eq("folder_id", value: folderID.uuidString.lowercased())
+            filter: folderID.map { .eq("folder_id", value: $0.uuidString.lowercased()) }
         )
         try await channel.subscribeWithError()
 
