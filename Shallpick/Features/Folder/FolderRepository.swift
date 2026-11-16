@@ -102,4 +102,14 @@ enum FolderInviteLink {
             .first { $0.name == "code" }?
             .value
     }
+
+    /// QR 에서 읽은 문자열 → 참여 코드. 초대 링크 또는 코드만 적힌 QR 둘 다 받습니다.
+    static func code(fromScanned text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed), let code = code(from: url) {
+            return code
+        }
+        let isBareCode = trimmed.count == 6 && trimmed.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        return isBareCode ? trimmed.uppercased() : nil
+    }
 }

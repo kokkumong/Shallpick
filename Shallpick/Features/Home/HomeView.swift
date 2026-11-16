@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var folderDialog: FolderDialog?
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
+    @State private var isShowingQRScanner = false
     /// nil = 아직 불러오는 중
     @State private var folders: [Folder]?
 
@@ -36,12 +37,20 @@ struct HomeView: View {
                     layout: $layout,
                     onNotifications: {},
                     onCreateFolder: { folderDialog = .create },
-                    onJoinWithCode: { folderDialog = .join(code: "") }
+                    onJoinWithCode: { folderDialog = .join(code: "") },
+                    onJoinWithQR: { isShowingQRScanner = true }
                 )
             }
             .ignoresSafeArea(.keyboard)
             .overlay { folderDialogView }
             .animation(.snappy(duration: 0.25), value: folderDialog)
+            .fullScreenCover(isPresented: $isShowingQRScanner) {
+                QRJoinScanner(onCancel: { isShowingQRScanner = false }) { code in
+                    // 찾은 코드를 코드 입력창에 채워서 확인받고 참여
+                    isShowingQRScanner = false
+                    folderDialog = .join(code: code)
+                }
+            }
             .sheet(item: $invitingFolder) { folder in
                 FolderInviteSheet(folder: folder)
             }
