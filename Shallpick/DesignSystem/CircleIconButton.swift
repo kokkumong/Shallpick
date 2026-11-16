@@ -9,8 +9,6 @@ struct CircleIcon: View {
         case plain
         /// 검정 배경 + 흰 아이콘 (확인 버튼)
         case filled
-        /// 질문 사진 고르기의 → 버튼: questionAccent 배경 + 흰 아이콘
-        case accent
     }
 
     private var foreground: Color {
@@ -18,11 +16,7 @@ struct CircleIcon: View {
     }
 
     private var background: Color {
-        switch style {
-        case .plain: .white
-        case .filled: .black800
-        case .accent: .questionAccent
-        }
+        style == .plain ? .white : .black800
     }
 
     let icon: ImageResource

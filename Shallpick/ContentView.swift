@@ -1,3 +1,5 @@
+// xcode: set sdk=iOS
+
 import Supabase
 import SwiftUI
 

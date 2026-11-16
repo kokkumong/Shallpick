@@ -72,11 +72,11 @@ struct FolderPhotoSelectView: View {
             FolderPhotoCell(photo: photo)
                 .overlay {
                     if isSelected {
-                        Rectangle().strokeBorder(Color.questionAccentStrong, lineWidth: 4)
+                        Rectangle().strokeBorder(Color.black800, lineWidth: 4)
                     }
                 }
                 .overlay(alignment: .topLeading) {
-                    SelectionCheck(isOn: isSelected, tint: .questionAccentStrong)
+                    SelectionCheck(isOn: isSelected)
                 }
         }
         .buttonStyle(.plain)
@@ -100,7 +100,7 @@ struct FolderPhotoSelectView: View {
                 .accessibilityAddTraits(.isHeader)
 
             // .disabled 는 버튼을 반투명하게 만들어 뒤 사진이 비치므로 쓰지 않음
-            CircleIconButton(icon: .iconNext, style: .accent, accessibilityLabel: "다음") {
+            CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "다음") {
                 let byID = Dictionary(uniqueKeysWithValues: photos.map { ($0.id, $0) })
                 let selected = selectedIDs.compactMap { byID[$0] }
                 guard !selected.isEmpty else { return }
