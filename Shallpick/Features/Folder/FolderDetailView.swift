@@ -19,6 +19,7 @@ struct FolderDetailView: View {
     @State private var isShowingChat = false
     @State private var isShowingPhotoPicker = false
     @State private var isShowingQuestionPicker = false
+    @State private var isShowingInvite = false
     @State private var upload: UploadProgress?
     @State private var errorMessage: String?
 
@@ -58,6 +59,13 @@ struct FolderDetailView: View {
             .safeAreaInset(edge: .top, spacing: 0) { header }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             .overlay(alignment: .top) { uploadBanner }
+            // 사람 초대: 위아래 버튼까지 덮고 가운데에 QR + 참여 코드
+            .overlay {
+                if isShowingInvite {
+                    FolderInvitePopup(folder: folder) { isShowingInvite = false }
+                }
+            }
+            .animation(.snappy(duration: 0.25), value: isShowingInvite)
             .toolbar(.hidden, for: .navigationBar)
             .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
             .animation(.snappy(duration: 0.2), value: upload)
@@ -159,6 +167,9 @@ struct FolderDetailView: View {
 
             HStack(spacing: 8) {
                 CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
+                CircleIconButton(icon: .iconPersonAdd, accessibilityLabel: "사람 초대") {
+                    isShowingInvite = true
+                }
                 CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
                     if let onOpenChat { onOpenChat() } else { isShowingChat = true }
                 }
