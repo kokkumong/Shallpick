@@ -1,3 +1,4 @@
+import Supabase
 import SwiftUI
 
 struct ContentView: View {
@@ -21,7 +22,7 @@ struct ContentView: View {
                         Task { await auth.signInWithKakao() }
                     }
                 case let .signedIn(user):
-                    HomeView(user: user) {
+                    HomeView(userID: user.id) {
                         Task { await auth.signOut() }
                     }
                     .transition(.opacity)
