@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// 로그인 이후 메인 화면
-/// Figma: ui / 메인_그리드_아무것도없을경우 (246:5260)
+/// Figma: 메인_그리드_아무것도없을경우 (246:5260), 메인_그리드_폴더버전 (246:5191), 메인_리스트 (246:5246)
 struct HomeView: View {
     let userID: UUID
     var onSignOut: () -> Void = {}
@@ -12,6 +12,8 @@ struct HomeView: View {
     @State private var folderDialog: FolderDialog?
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
+    /// nil = 아직 불러오는 중
+    @State private var folders: [Folder]?
 
     private enum FolderDialog: Equatable {
         case create
@@ -19,8 +21,7 @@ struct HomeView: View {
     }
 
     var body: some View {
-        // TODO: 폴더 목록이 생기면 layout(.grid/.list)에 맞게 그리기
-        EmptyFolderView()
+        content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -72,6 +73,37 @@ struct HomeView: View {
             .task(id: userID) {
                 profile = try? await ProfileRepository.fetch(userID: userID)
             }
+            .task(id: userID) { await reloadFolders() }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch folders {
+        case nil:
+            ProgressView()
+        case let folders? where folders.isEmpty:
+            EmptyFolderView()
+        case let folders?:
+            FolderCollectionView(
+                folders: folders,
+                layout: layout,
+                onSelect: { _ in /* TODO: 폴더 상세 화면 */ },
+                onInvite: { invitingFolder = $0 }
+            )
+            .refreshable { await reloadFolders() }
+            .animation(.snappy(duration: 0.3), value: layout)
+        }
+    }
+
+    private func reloadFolders() async {
+        do {
+            let loaded = try await FolderRepository.fetchMine()
+            withAnimation(.snappy) { folders = loaded }
+        } catch is CancellationError {
+        } catch {
+            print("[Folder] 목록 불러오기 실패:", error)
+            if folders == nil { folders = [] }
+        }
     }
 }
 
@@ -84,6 +116,7 @@ private extension HomeView {
                 let folder = try await FolderRepository.create(name: name)
                 folderDialog = nil
                 invitingFolder = folder
+                await reloadFolders()
             }
             .transition(.opacity)
         case let .join(code):
@@ -91,6 +124,7 @@ private extension HomeView {
                 let folder = try await FolderRepository.join(code: code)
                 folderDialog = nil
                 joinedFolder = folder
+                await reloadFolders()
             }
             .id(code)
             .transition(.opacity)

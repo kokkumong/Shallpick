@@ -6,12 +6,34 @@ nonisolated struct Folder: Decodable, Sendable, Identifiable, Hashable {
     let name: String
     let ownerID: UUID
     let inviteCode: String
+    /// my_folders() 에서만 채워짐. 참여한 순서.
+    var memberNames: [String] = []
+    /// 폴더 표지에 보일 사진. 사진 기능이 생기면 채웁니다.
+    var coverPhotoURLs: [URL] = []
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case ownerID = "owner_id"
         case inviteCode = "invite_code"
+        case memberNames = "member_names"
+    }
+
+    init(id: UUID, name: String, ownerID: UUID, inviteCode: String, memberNames: [String] = []) {
+        self.id = id
+        self.name = name
+        self.ownerID = ownerID
+        self.inviteCode = inviteCode
+        self.memberNames = memberNames
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        ownerID = try container.decode(UUID.self, forKey: .ownerID)
+        inviteCode = try container.decode(String.self, forKey: .inviteCode)
+        memberNames = try container.decodeIfPresent([String].self, forKey: .memberNames) ?? []
     }
 }
 
@@ -30,6 +52,15 @@ enum FolderRepository {
     }
 
     static let maxNameLength = 30
+
+    /// 내가 참여한 폴더 (최근 참여 순)
+    static func fetchMine() async throws -> [Folder] {
+        guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
+        return try await client
+            .rpc("my_folders")
+            .execute()
+            .value
+    }
 
     static func create(name: String) async throws -> Folder {
         guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
