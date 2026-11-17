@@ -126,7 +126,7 @@ private struct ProfileAvatar: View {
     let url: URL?
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        AppImage(url: url) { phase in
             if let image = phase.image {
                 image.resizable().scaledToFill()
             } else {

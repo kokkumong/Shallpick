@@ -9,7 +9,7 @@ struct ShallpickApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        if let appKey = AppConfig.kakaoNativeAppKey {
+        if !DemoStore.isAvailable, let appKey = AppConfig.kakaoNativeAppKey {
             KakaoSDK.initSDK(appKey: appKey)
         }
     }

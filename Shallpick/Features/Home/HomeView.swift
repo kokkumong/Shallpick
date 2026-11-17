@@ -57,7 +57,9 @@ struct HomeView: View {
             if isBackHome { Task { await reloadCovers() } }
         }
         .task(id: userID) { await listenForQuestions() }
-        .task(id: userID) { await LocalNotifications.requestAuthorization() }
+        .task(id: userID) {
+            if !DemoStore.shared.isActive { await LocalNotifications.requestAuthorization() }
+        }
         // 앱 밖 알림을 눌러 들어오면 그 폴더 채팅으로
         .onChange(of: NotificationRouter.shared.pendingFolderID, initial: true) { _, folderID in
             guard let folderID else { return }
@@ -78,20 +80,41 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
             .safeAreaInset(edge: .top, spacing: 0) {
-                HomeHeader(
+                VStack(spacing: 0) {
+                    if DemoStore.shared.isActive {
+                        HStack {
+                            Text("시연 모드 · 샘플 데이터")
+                            Spacer()
+                            Button("다시 시작") { DemoStore.shared.reset() }
+                                .accessibilityIdentifier("demo.reset")
+                            Button("종료", action: onSignOut)
+                                .accessibilityIdentifier("demo.exit")
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Color.black600)
+                        .padding(.horizontal, 24).padding(.vertical, 8)
+                        .background(Color.blue100)
+                    }
+                    HomeHeader(
                     avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
                     searchText: $searchText,
                     isSearching: $isSearching,
                     onProfile: { isShowingAccountMenu = true }
-                )
+                    )
+                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HomeBottomBar(
                     layout: $layout,
-                    onNotifications: {},
+                    onNotifications: {
+                        if DemoStore.shared.isActive, let alert = DemoStore.shared.sampleQuestion() { questionAlerts.present(alert) }
+                    },
                     onCreateFolder: { folderDialog = .create },
-                    onJoinWithCode: { folderDialog = .join(code: "") },
-                    onJoinWithQR: { isShowingQRScanner = true }
+                    onJoinWithCode: { folderDialog = .join(code: DemoStore.shared.isActive ? "DEMO26" : "") },
+                    onJoinWithQR: {
+                        if DemoStore.shared.isActive { folderDialog = .join(code: "DEMO26") }
+                        else { isShowingQRScanner = true }
+                    }
                 )
             }
             .ignoresSafeArea(.keyboard)
@@ -130,8 +153,12 @@ struct HomeView: View {
                 isPresented: $isShowingAccountMenu,
                 titleVisibility: .visible
             ) {
-                Button("테스트 알림 보내기 (5초 뒤)") {
-                    Task { await sendTestNotification() }
+                if DemoStore.shared.isActive {
+                    Button("샘플 질문 받아보기") {
+                        if let alert = DemoStore.shared.sampleQuestion() { questionAlerts.present(alert) }
+                    }
+                } else {
+                    Button("테스트 알림 보내기 (5초 뒤)") { Task { await sendTestNotification() } }
                 }
                 Button("로그아웃", role: .destructive, action: onSignOut)
             }
@@ -172,6 +199,7 @@ struct HomeView: View {
     /// 다른 멤버가 내 폴더에 보낸 새 메시지를 앱 안 알림으로 띄움.
     /// 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
     private func listenForQuestions() async {
+        guard !DemoStore.shared.isActive else { return }
         #if DEBUG
         // 실행 인자 -demoQuestionAlert 로 알림 모양 확인
         if ProcessInfo.processInfo.arguments.contains("-demoQuestionAlert") {

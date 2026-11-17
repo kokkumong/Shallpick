@@ -24,7 +24,7 @@ final class ChatStore {
     private(set) var isLoading = true
     private(set) var loadFailed = false
 
-    init(folder: Folder, myUserID: UUID? = SupabaseManager.client?.auth.currentUser?.id) {
+    init(folder: Folder, myUserID: UUID? = PhotoRepository.currentUserID) {
         self.folder = folder
         self.myUserID = myUserID
     }
