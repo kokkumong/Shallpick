@@ -2,9 +2,11 @@ name: iOS browser demo
 
 on:
   push:
-    branches: [main, feat/browser-demo]
+    branches: [main]
+    paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
   pull_request:
     branches: [main]
+    paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
   workflow_dispatch:
 
 permissions:

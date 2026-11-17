@@ -35,7 +35,7 @@ SwiftUI 앱을 GitHub의 macOS 실행기에서 빌드하고, Appetize의 iPhone 
 4. `BUILD.txt`의 커밋을 PR과 대조합니다. `SHA256.txt`는 업로드용 ZIP 해시입니다.
 5. Appetize에서 iOS 26 이상으로 실행하고 위 시연 순서를 확인합니다.
 
-Actions 산출물은 14일 보관됩니다. 필요하면 내려받아 보관합니다. `main` 반영 후에는 Actions의 **Run workflow**로도 생성할 수 있습니다. 현재 브랜치에서는 push/PR 실행을 사용합니다.
+Actions 산출물은 14일 보관됩니다. 필요하면 내려받아 보관합니다. `main` 반영 후에는 Actions의 **Run workflow**로도 생성할 수 있습니다. 현재 작업 브랜치는 PR의 코드 변경으로 실행하며, main 코드 변경도 자동 빌드합니다.
 
 ## 빌드와 검증
 
