@@ -1,0 +1,98 @@
+name: iOS browser demo
+
+on:
+  push:
+    branches: [main]
+    paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
+  pull_request:
+    branches: [main]
+    paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
+  workflow_dispatch:
+    inputs:
+      run_ui_tests:
+        description: 'Run native UI tests (requires a working hosted simulator runtime)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-demo-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Select Xcode and prepare test scheme
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+          gem install xcodeproj -v 1.27.0 --user-install --no-document
+          ruby scripts/configure-ui-tests.rb
+          mkdir -p build/artifacts
+      - name: Compile standard app without demo mode
+        run: |
+          set -o pipefail
+          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/standard-build.log | xcbeautify
+      - name: Build offline ARM simulator app
+        run: |
+          set -o pipefail
+          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
+            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/demo-build.log | xcbeautify
+          APP=build/demo/Build/Products/Debug-iphonesimulator/Shallpick.app
+          test -d "$APP"
+          xcrun lipo -archs "$APP/Shallpick"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" build/artifacts/Shallpick-Appetize.zip
+          shasum -a 256 build/artifacts/Shallpick-Appetize.zip > build/artifacts/SHA256.txt
+          printf 'Commit: %s\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > build/artifacts/BUILD.txt
+      - name: Publish Appetize upload bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Shallpick-Appetize-${{ github.sha }}
+          path: build/artifacts/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Exercise demo on iPhone simulator
+        if: github.event_name == 'workflow_dispatch' && inputs.run_ui_tests
+        timeout-minutes: 12
+        run: |
+          set -o pipefail
+          echo 'Discovering available iOS 26 simulator devices'
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for k,v in d["devices"].items() if "iOS-26" in k for x in v if "iPhone" in x["name"]))')
+          echo "Booting simulator $DEVICE"
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
+            -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" \
+            -derivedDataPath build/demo -resultBundlePath build/DemoTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
+            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= \
+            -parallel-testing-enabled NO test 2>&1 | tee build/ui-tests.log | xcbeautify
+      - name: Export actual simulator screenshots
+        if: always()
+        run: |
+          if [ -d build/DemoTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/DemoTests.xcresult --output-path build/screenshots
+          fi
+      - name: Publish verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: iOS-demo-verification-${{ github.sha }}
+          path: |
+            build/*.log
+            build/screenshots/
+            build/DemoTests.xcresult/
+          retention-days: 14
+          if-no-files-found: warn

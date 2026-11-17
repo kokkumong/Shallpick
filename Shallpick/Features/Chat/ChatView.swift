@@ -398,7 +398,7 @@ private struct ChatAvatar: View {
     let url: URL?
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        AppImage(url: url) { phase in
             if let image = phase.image {
                 image.resizable().scaledToFill()
             } else {
@@ -511,6 +511,7 @@ private struct ChatInputBar: View {
             // 입력칸 안 오른쪽에 전송 버튼 (채팅창(new) 401:5041)
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(attachments.isEmpty ? "메시지를 입력하세요" : "사진에 대해 물어보세요", text: $text, axis: .vertical)
+                    .accessibilityIdentifier("chat.draft")
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color.black800)
                     .lineLimit(1...5)
@@ -573,7 +574,7 @@ private struct ChatPhotoViewer: View {
     var body: some View {
         TabView(selection: $selection) {
             ForEach(photos) { photo in
-                AsyncImage(url: photo.url) { phase in
+                AppImage(url: photo.url) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFit()
                     } else if phase.error != nil {

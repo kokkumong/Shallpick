@@ -19,6 +19,7 @@ struct LoginView: View {
                     .position(x: size.width / 2, y: size.height / 2 - 64.41)
 
                 // 카카오 로그인 버튼 (화면 아래에서 96pt 위)
+                if !DemoStore.isAvailable {
                 Button(action: onKakaoLogin) {
                     Image(.kakaoLoginButton)
                         .resizable()
@@ -36,7 +37,23 @@ struct LoginView: View {
                 .buttonStyle(.plain)
                 .disabled(isLoading)
                 .accessibilityLabel("카카오 로그인")
-                .position(x: size.width / 2, y: size.height - 96 - 26)            }
+                .position(x: size.width / 2, y: size.height - 96 - 26)
+                } else {
+                    VStack(spacing: 14) {
+                        Button("로그인 없이 둘러보기") { DemoStore.shared.begin() }
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(Color.black800, in: RoundedRectangle(cornerRadius: 14))
+                            .accessibilityIdentifier("demo.start")
+                        Text("시연 모드 · 샘플 사진과 대화로 시작해요")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.black600)
+                    }
+                    .padding(.horizontal, 28)
+                    .position(x: size.width / 2, y: size.height - 122)
+                }
+            }
         }
         .ignoresSafeArea()
     }

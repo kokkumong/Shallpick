@@ -76,6 +76,7 @@ enum ChatRepository {
 
     /// 최근 메시지 (오래된 것 → 최신 순)
     static func fetchRecent(folderID: UUID) async throws -> [ChatMessage] {
+        if DemoStore.shared.isActive { return DemoStore.shared.messages(in: folderID) }
         let latestFirst: [ChatMessage] = try await client
             .from("messages")
             .select()
@@ -88,7 +89,8 @@ enum ChatRepository {
     }
 
     static func fetchMembers(folderID: UUID) async throws -> [ChatMember] {
-        try await client
+        if DemoStore.shared.isActive { return DemoStore.shared.members }
+        return try await client
             .rpc("folder_member_profiles", params: ["target_folder_id": folderID])
             .execute()
             .value
@@ -96,7 +98,8 @@ enum ChatRepository {
 
     /// id 는 앱에서 만들어 보냅니다. Realtime 으로 같은 메시지가 다시 와도 id 로 합칩니다.
     static func send(id: UUID, folderID: UUID, body: String, photoIDs: [UUID] = []) async throws -> ChatMessage {
-        try await client
+        if DemoStore.shared.isActive { return DemoStore.shared.send(id: id, folderID: folderID, body: body, photoIDs: photoIDs) }
+        return try await client
             .from("messages")
             .insert(NewMessage(id: id, folder_id: folderID, body: body, photo_ids: photoIDs))
             .select()
@@ -114,6 +117,7 @@ enum ChatRepository {
 
     /// folderID 가 nil 이면 내가 참여한 모든 폴더의 새 메시지 (RLS 로 걸러짐) — 앱 안 질문 알림용
     static func subscribe(folderID: UUID?) async throws -> Subscription {
+        if DemoStore.shared.isActive { return Subscription(messages: AsyncStream { $0.finish() }, close: {}) }
         let client = try Self.client
         // SDK 는 같은 이름의 채널을 재사용하므로, 화면을 다시 열거나 다시 시도할 때
         // 이전 구독을 정리하면서 새 구독까지 닫히지 않게 매번 다른 이름을 씁니다.

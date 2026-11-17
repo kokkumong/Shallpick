@@ -51,11 +51,12 @@ enum PhotoRepository {
     }
 
     static var currentUserID: UUID? {
-        SupabaseManager.client?.auth.currentUser?.id
+        DemoStore.shared.isActive ? DemoStore.shared.userID : SupabaseManager.client?.auth.currentUser?.id
     }
 
     /// 폴더 사진 (최신 순), 보기용 서명 주소 포함
     static func fetch(folderID: UUID) async throws -> [PhotoItem] {
+        if DemoStore.shared.isActive { return DemoStore.shared.photos(in: folderID) }
         let client = try client
         var photos: [PhotoItem] = try await client
             .from("photos")
@@ -84,6 +85,9 @@ enum PhotoRepository {
 
     /// 메인 화면 폴더 표지용: 폴더마다 최신 사진 `limit` 장의 서명 주소
     static func fetchCovers(folderIDs: [UUID], limit: Int = 4) async throws -> [UUID: [URL]] {
+        if DemoStore.shared.isActive {
+            return Dictionary(uniqueKeysWithValues: folderIDs.map { ($0, Array(DemoStore.shared.photos(in: $0).compactMap(\.url).prefix(limit))) })
+        }
         guard !folderIDs.isEmpty else { return [:] }
         let client = try client
 

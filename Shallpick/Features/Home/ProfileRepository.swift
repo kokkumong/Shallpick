@@ -16,6 +16,7 @@ nonisolated struct Profile: Decodable, Sendable {
 /// supabase/migrations 의 public.profiles 테이블
 enum ProfileRepository {
     static func fetch(userID: UUID) async throws -> Profile? {
+        if DemoStore.shared.isActive { return Profile(id: userID, nickname: "시연 사용자", avatarURL: nil) }
         guard let client = SupabaseManager.client else { return nil }
         return try await client
             .from("profiles")

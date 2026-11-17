@@ -1,3 +1,5 @@
+.local/
+
 # macOS
 .DS_Store
 .AppleDouble
