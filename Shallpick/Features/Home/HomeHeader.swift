@@ -6,6 +6,8 @@ struct HomeHeader: View {
     var avatarURL: URL?
     @Binding var searchText: String
     @Binding var isSearching: Bool
+    /// 프로필 메뉴에 새 알림이 쌓였으면 오른쪽 위에 빨간 점
+    var hasNewNotifications = false
     var onProfile: () -> Void = {}
 
     @FocusState private var isFieldFocused: Bool
@@ -49,9 +51,20 @@ struct HomeHeader: View {
                     .frame(width: 45, height: 45)
                     .clipShape(Circle())
                     .floatingShadow()
+                    .overlay(alignment: .topTrailing) {
+                        if hasNewNotifications {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 11, height: 11)
+                                .overlay { Circle().stroke(.white, lineWidth: 2) }
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .animation(.snappy(duration: 0.25), value: hasNewNotifications)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("내 계정")
+            .accessibilityValue(hasNewNotifications ? "새 알림 있음" : "")
         }
         .frame(height: 52)
         .padding(.horizontal, 24)

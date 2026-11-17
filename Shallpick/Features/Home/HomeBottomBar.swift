@@ -5,10 +5,10 @@ enum FolderLayout: CaseIterable {
     case list
 }
 
-/// 메인 하단: Grid/List 전환 + 알림 + 폴더 추가 (148:9639)
+/// 메인 하단: Grid/List 전환 + 폴더 추가 (148:9639)
+/// 알림 내역은 상단 프로필 버튼 메뉴로 옮김
 struct HomeBottomBar: View {
     @Binding var layout: FolderLayout
-    var onNotifications: () -> Void = {}
     var onCreateFolder: () -> Void = {}
     var onJoinWithCode: () -> Void = {}
     var onJoinWithQR: () -> Void = {}
@@ -19,18 +19,15 @@ struct HomeBottomBar: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
-                CircleIconButton(icon: .iconBell, accessibilityLabel: "알림", action: onNotifications)
-                Menu {
-                    Button("새 폴더 만들기", systemImage: "folder.badge.plus", action: onCreateFolder)
-                    Button("코드로 참여하기", systemImage: "number", action: onJoinWithCode)
-                    Button("QR로 참여하기", systemImage: "qrcode.viewfinder", action: onJoinWithQR)
-                } label: {
-                    CircleIcon(icon: .iconPlus)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("폴더 추가")
+            Menu {
+                Button("새 폴더 만들기", systemImage: "folder.badge.plus", action: onCreateFolder)
+                Button("코드로 참여하기", systemImage: "number", action: onJoinWithCode)
+                Button("QR로 참여하기", systemImage: "qrcode.viewfinder", action: onJoinWithQR)
+            } label: {
+                CircleIcon(icon: .iconPlus)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("폴더 추가")
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 33)

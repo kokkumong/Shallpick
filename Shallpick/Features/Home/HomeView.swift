@@ -18,7 +18,11 @@ struct HomeView: View {
     /// 폴더 → 채팅 순으로 쌓이는 화면 경로
     @State private var path: [HomeRoute] = []
     @State private var questionAlerts = QuestionAlertCenter()
-    @State private var notificationNotice: String?
+    /// 프로필 메뉴의 알림 내역. nil = 불러오는 중
+    @State private var notifications: [NotificationItem]?
+    @State private var didFailNotifications = false
+    /// 프로필 메뉴를 마지막으로 연 뒤에 새 알림이 쌓였는지 (프로필 버튼의 빨간 점)
+    @State private var hasNewNotifications = false
     /// nil = 아직 불러오는 중
     @State private var folders: [Folder]?
 
@@ -56,6 +60,7 @@ struct HomeView: View {
         .onChange(of: path.isEmpty) { _, isBackHome in
             if isBackHome { Task { await reloadCovers() } }
         }
+        .onChange(of: path) { old, new in updateReadState(from: old, to: new) }
         .task(id: userID) { await listenForMessages() }
         #if DEBUG
         .task(id: userID) { await simulateIncomingAfterBackground() }
@@ -65,14 +70,6 @@ struct HomeView: View {
         .onChange(of: NotificationRouter.shared.pendingFolderID, initial: true) { _, folderID in
             guard let folderID else { return }
             Task { await openChat(folderID: folderID) }
-        }
-        .alert(
-            "알림",
-            isPresented: Binding(get: { notificationNotice != nil }, set: { if !$0 { notificationNotice = nil } })
-        ) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text(notificationNotice ?? "")
         }
     }
 
@@ -85,19 +82,21 @@ struct HomeView: View {
                     avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
                     searchText: $searchText,
                     isSearching: $isSearching,
-                    onProfile: { isShowingAccountMenu = true }
+                    hasNewNotifications: hasNewNotifications,
+                    onProfile: { isShowingAccountMenu.toggle() }
                 )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HomeBottomBar(
                     layout: $layout,
-                    onNotifications: {},
                     onCreateFolder: { folderDialog = .create },
                     onJoinWithCode: { folderDialog = .join(code: "") },
                     onJoinWithQR: { isShowingQRScanner = true }
                 )
             }
             .ignoresSafeArea(.keyboard)
+            .overlay { accountMenu }
+            .animation(.snappy(duration: 0.25), value: isShowingAccountMenu)
             .overlay { folderDialogView }
             .animation(.snappy(duration: 0.25), value: folderDialog)
             .fullScreenCover(isPresented: $isShowingQRScanner) {
@@ -128,20 +127,20 @@ struct HomeView: View {
                     folderDialog = .join(code: code)
                 }
             }
-            .confirmationDialog(
-                profile?.nickname ?? "내 계정",
-                isPresented: $isShowingAccountMenu,
-                titleVisibility: .visible
-            ) {
-                Button("테스트 알림 보내기 (5초 뒤)") {
-                    Task { await sendTestNotification() }
-                }
-                Button("로그아웃", role: .destructive, action: onSignOut)
+            .task(id: isShowingAccountMenu) {
+                guard isShowingAccountMenu else { return }
+                // 메뉴를 열면 빨간 점은 사라지고, 안 읽은 내역은 채팅을 볼 때까지 남음
+                readState.markMenuSeen()
+                hasNewNotifications = false
+                await reloadNotifications()
             }
             .task(id: userID) {
                 profile = try? await ProfileRepository.fetch(userID: userID)
             }
-            .task(id: userID) { await reloadFolders() }
+            .task(id: userID) {
+                await reloadFolders()
+                await reloadNotifications()
+            }
     }
 
     @ViewBuilder
@@ -211,6 +210,12 @@ struct HomeView: View {
         guard message.userID != userID, !isViewingChat(of: message.folderID) else { return }
         // 다른 멤버에게 보낸 질문은 알리지 않음
         if message.isQuestion, !message.recipientIDs.contains(userID) { return }
+        // 프로필 메뉴의 내역·빨간 점
+        if isShowingAccountMenu {
+            Task { await reloadNotifications() }
+        } else {
+            hasNewNotifications = true
+        }
 
         if UIApplication.shared.applicationState != .active, LocalNotifications.isFresh(message) {
             guard let folder = await folder(id: message.folderID) else { return }
@@ -257,21 +262,63 @@ struct HomeView: View {
         path = [.folder(folder), .chat(folder)]
     }
 
-    /// 계정 메뉴의 테스트 알림. 5초 안에 홈 화면으로 나가면 앱 밖 알림으로 보임
-    private func sendTestNotification() async {
-        guard await LocalNotifications.requestAuthorization() else {
-            notificationNotice = "알림 권한이 꺼져 있어요. 설정 > Shallpick > 알림에서 켜 주세요."
+    /// 이 기기에 저장한 읽음 기록
+    private var readState: NotificationReadState { NotificationReadState(userID: userID) }
+
+    /// 알림 내역을 새로 불러오고 프로필의 빨간 점을 맞춤. 이미 받은 내역은 불러오는 동안에도 그대로 보여 줌
+    private func reloadNotifications() async {
+        #if DEBUG
+        // 실행 인자 -demoNotifications 로 내역·빨간 점 모양 확인
+        if ProcessInfo.processInfo.arguments.contains("-demoNotifications") {
+            let demoFolders = folders?.isEmpty == false ? folders! : Folder.previews
+            func folder(_ index: Int) -> Folder { demoFolders[index % demoFolders.count] }
+            notifications = [
+                NotificationItem(
+                    id: "q1", folder: folder(0),
+                    kind: .question(text: "현서님이 사진 3장에 대한 질문을 올렸어요! 확인해주세요:)"),
+                    createdAt: .now.addingTimeInterval(-90), isUnread: true
+                ),
+                NotificationItem(
+                    id: "c1", folder: folder(1), kind: .unreadChats(count: 12),
+                    createdAt: .now.addingTimeInterval(-1_800), isUnread: true
+                ),
+                NotificationItem(
+                    id: "c2", folder: folder(2), kind: .unreadChats(count: 128),
+                    createdAt: .now.addingTimeInterval(-7_200), isUnread: true
+                ),
+                NotificationItem(
+                    id: "q2", folder: folder(3),
+                    kind: .question(text: "승완님의 질문: 이거 인스타에 올려도 돼?"),
+                    createdAt: .now.addingTimeInterval(-86_400), isUnread: false
+                ),
+            ]
+            hasNewNotifications = !isShowingAccountMenu
             return
         }
+        #endif
+        guard let folders else { return }
         do {
-            try await LocalNotifications.scheduleTest(
-                folder: folders?.first,
-                senderNickname: profile?.nickname ?? "샬픽 사용자"
-            )
-            notificationNotice = "5초 뒤에 테스트 알림이 와요. 홈 화면으로 나가서 확인해 보세요."
+            let items = try await NotificationHistory.fetch(folders: folders, userID: userID)
+            notifications = items
+            didFailNotifications = false
+            hasNewNotifications = !isShowingAccountMenu && readState.hasNew(in: items)
+        } catch is CancellationError {
         } catch {
-            notificationNotice = "테스트 알림을 보내지 못했어요: \(error.localizedDescription)"
+            print("[Notification] 내역 불러오기 실패:", error)
+            didFailNotifications = notifications == nil
         }
+    }
+
+    /// 채팅방에 들어가거나 나올 때 그 폴더를 읽음으로. 나오면 내역도 새로
+    private func updateReadState(from old: [HomeRoute], to new: [HomeRoute]) {
+        var changed = false
+        for route in [old.last, new.last] {
+            if case let .chat(folder, _)? = route {
+                readState.markRead(folderID: folder.id)
+                changed = true
+            }
+        }
+        if changed { Task { await reloadNotifications() } }
     }
 
     private func isViewingChat(of folderID: UUID) -> Bool {
@@ -355,6 +402,39 @@ enum HomeRoute: Hashable {
 }
 
 private extension HomeView {
+    /// 프로필 버튼 바로 아래에 펼쳐지는 메뉴. 바깥을 누르면 닫힘
+    var accountMenu: some View {
+        ZStack(alignment: .topTrailing) {
+            if isShowingAccountMenu {
+                Color.black.opacity(0.06)
+                    .ignoresSafeArea()
+                    .onTapGesture { isShowingAccountMenu = false }
+                    .accessibilityLabel("메뉴 닫기")
+                    .accessibilityAddTraits(.isButton)
+                    .transition(.opacity)
+
+                AccountMenu(
+                    items: notifications,
+                    didFail: didFailNotifications,
+                    onSelect: { item in
+                        isShowingAccountMenu = false
+                        // 메뉴 닫힘 애니메이션과 같은 순간에 바꾸면 채팅까지 쌓이지 않아서 다음 차례에
+                        Task { path = [.folder(item.folder), .chat(item.folder)] }
+                    },
+                    onSignOut: {
+                        isShowingAccountMenu = false
+                        onSignOut()
+                    }
+                )
+                // 헤더(위 여백 11 + 높이 52) 바로 아래, 프로필 버튼 오른쪽 끝에 맞춤
+                .padding(.top, 71)
+                .padding(.trailing, 24)
+                .transition(.scale(scale: 0.85, anchor: .topTrailing).combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
     @ViewBuilder
     var folderDialogView: some View {
         switch folderDialog {
