@@ -39,11 +39,11 @@ Actions 산출물은 14일 보관됩니다. 필요하면 내려받아 보관합�
 
 ## 빌드와 검증
 
-- 표준 GitHub `macos-26` 실행기를 사용합니다. Xcode 26.6이 설치되어 있으면 선택하고, 아니면 실행기 기본 버전을 사용하며 로그에 버전을 남깁니다.
+- 표준 GitHub `macos-15` 실행기에서 Xcode 26.3을 선택하며 로그에 버전을 남깁니다. 일반 빌드와 시연 빌드는 같은 작업 폴더를 순서대로 사용해 공통 라이브러리 빌드를 재사용합니다.
 - 일반 앱과 시연 앱을 각각 컴파일합니다. 배포 인증서와 Apple Developer 유료 계정은 이 시뮬레이터 빌드에 필요하지 않습니다.
 - `scripts/configure-ui-tests.rb`가 CI 작업 공간에만 UI 테스트 타깃을 만듭니다. 팀의 Xcode 프로젝트 파일을 덮어쓴 결과는 커밋하지 않습니다.
 - `UITests/DemoFlowTests.swift`가 사진 선택, 질문 전송, 재진입 후 유지, 초기화, 샘플 사진 추가, 알림 이동, 종료를 확인합니다.
 - `iOS-demo-verification-<commit>`에 로그, XCTest 결과와 실제 시뮬레이터 스크린샷을 남깁니다. 빌드 ZIP이 있어도 테스트 실패 시 검증 완료로 표시하지 않습니다.
 - Appetize 계정/API 토큰은 저장소에 넣지 않습니다. 최초 연결은 계정 소유자가 로그인한 브라우저에서 업로드합니다. 자동 업로드는 별도 API 자격증명을 연결한 이후에 추가할 수 있습니다.
 
-출처: [Appetize iOS 업로드 규격](https://docs.appetize.io/platform/app-management/uploading-apps/ios), [GitHub macOS 실행기 구성](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md). Appetize 요금제별 실행 시간은 계정 화면에서 확인합니다.
+출처: [Appetize iOS 업로드 규격](https://docs.appetize.io/platform/app-management/uploading-apps/ios), [GitHub macOS 실행기 구성](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md). Appetize 요금제별 실행 시간은 계정 화면에서 확인합니다.

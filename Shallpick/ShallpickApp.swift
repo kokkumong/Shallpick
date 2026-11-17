@@ -19,7 +19,7 @@ struct ShallpickApp: App {
             ContentView()
                 .onOpenURL { url in
                     // 카카오톡 앱에서 로그인 후 돌아올 때
-                    if AuthApi.isKakaoTalkLoginUrl(url) {
+                    if !DemoStore.isAvailable, AuthApi.isKakaoTalkLoginUrl(url) {
                         _ = AuthController.handleOpenUrl(url: url)
                     }
                 }

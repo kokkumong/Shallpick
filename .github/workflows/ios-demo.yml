@@ -16,15 +16,13 @@ concurrency:
 
 jobs:
   simulator:
-    runs-on: macos-26
+    runs-on: macos-15
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Select Xcode and prepare test scheme
         run: |
-          if [ -d /Applications/Xcode_26.6.app ]; then
-            sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
-          fi
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
           gem install xcodeproj -v 1.27.0 --user-install --no-document
           ruby scripts/configure-ui-tests.rb
@@ -34,7 +32,7 @@ jobs:
           set -o pipefail
           xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/standard CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/standard-build.log | xcbeautify
       - name: Build offline ARM simulator app
         run: |

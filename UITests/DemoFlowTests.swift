@@ -4,7 +4,7 @@ import XCTest
 final class DemoFlowTests: XCTestCase {
     private var app: XCUIApplication!
 
-    override func setUpWithError() throws {
+    private func startDemo() {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(ko)", "-AppleLocale", "ko_KR"]
@@ -16,6 +16,7 @@ final class DemoFlowTests: XCTestCase {
     }
 
     func testPhotoQuestionPersistsUntilReset() {
+        startDemo()
         capture("02-home")
         app.buttons["주말 나들이"].tap()
         XCTAssertTrue(app.buttons["질문에 첨부할 사진 고르기"].waitForExistence(timeout: 5))
@@ -49,6 +50,7 @@ final class DemoFlowTests: XCTestCase {
     }
 
     func testSampleUploadNotificationAndExit() {
+        startDemo()
         app.buttons["주말 나들이"].tap()
         app.buttons["사진 올리기"].tap()
         XCTAssertTrue(app.buttons["demo.addPhotos"].waitForExistence(timeout: 5))
