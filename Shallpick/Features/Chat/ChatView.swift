@@ -272,8 +272,8 @@ private struct ChatBubble: View {
     }
 }
 
-/// 말풍선 + (있으면) 위에 첨부 사진. 말풍선이 사진 아래 20pt 를 덮음
-/// Figma: Component 13·16 (사진 1장), Component 14·17 (여러 장 → 작은 폴더 + >)
+/// 말풍선 + (있으면) 위에 첨부 사진. 말풍선이 사진 아래를 덮음 (1장 20pt, 여러 장 25pt)
+/// Figma: Component 13·16 (사진 1장), 540:11179 (여러 장 → 겹친 사진 + >)
 private struct MessageContent: View {
     let message: ChatMessage
     let photos: [PhotoItem?]
@@ -286,7 +286,7 @@ private struct MessageContent: View {
         VStack(alignment: alignment, spacing: 0) {
             if !photos.isEmpty {
                 ChatAttachment(photos: photos)
-                    .padding(.bottom, -20)
+                    .padding(.bottom, photos.count == 1 ? -20 : -25)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: onOpenPhotos)
                     .accessibilityElement(children: .ignore)
@@ -305,7 +305,7 @@ private struct MessageContent: View {
     }
 }
 
-/// 첨부 사진: 1장이면 사진(58 × 78), 여러 장이면 사진이 꽂힌 작은 폴더
+/// 첨부 사진: 1장이면 사진(58 × 78), 여러 장이면 최대 3장을 겹쳐 놓은 묶음
 private struct ChatAttachment: View {
     let photos: [PhotoItem?]
 
@@ -314,7 +314,33 @@ private struct ChatAttachment: View {
             FolderPhoto(url: photos[0]?.url, cornerRadius: 8)
                 .frame(width: 58, height: 78)
         } else {
-            MiniPhotoFolder(photoURLs: photos.prefix(3).map { $0?.url })
+            ChatPhotoStack(photoURLs: photos.prefix(3).map { $0?.url })
+        }
+    }
+}
+
+/// 사진 묶음 (Figma Group 40 540:11121, 63 × 65): 뒤 오른쪽 +4°, 뒤 왼쪽 -4°, 앞 가운데
+private struct ChatPhotoStack: View {
+    let photoURLs: [URL?]
+
+    private let photoSize = CGSize(width: 35.97, height: 47.96)
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            photo(1, rotation: 4, center: CGPoint(x: 43.48, y: 25.18))
+            photo(0, rotation: -4, center: CGPoint(x: 19.62, y: 30.5))
+            photo(2, rotation: 0, center: CGPoint(x: 31.41, y: 41.04))
+        }
+        .frame(width: 63.09, height: 65.02, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func photo(_ index: Int, rotation: Double, center: CGPoint) -> some View {
+        if index < photoURLs.count {
+            FolderPhoto(url: photoURLs[index], cornerRadius: 4)
+                .frame(width: photoSize.width, height: photoSize.height)
+                .rotationEffect(.degrees(rotation))
+                .position(center)
         }
     }
 }

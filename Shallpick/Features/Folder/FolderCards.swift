@@ -207,8 +207,8 @@ struct FolderPhoto: View {
 }
 
 /// 사진 3장이 꽂힌 작은 폴더 (59 × 59, 앞면이 아래로 3pt 넘침)
-/// 메인 화면 그리드 카드(FolderGridCard)를 59/150 배로 줄인 배치. 질문 알림 / 채팅 첨부에 씀
-/// Figma: 채팅 Component 14·17 (234:23864), 응답요청알람 (237:27204)
+/// 메인 화면 그리드 카드(FolderGridCard)를 59/150 배로 줄인 배치. 질문 알림 카드에 씀
+/// Figma: 응답요청알람 (237:27204)
 struct MiniPhotoFolder: View {
     let photoURLs: [URL?]
 
