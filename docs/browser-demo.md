@@ -29,7 +29,7 @@ SwiftUI 앱을 GitHub의 macOS 실행기에서 빌드하고, Appetize의 iPhone 
 
 ## 최신 앱을 다시 만들 때
 
-1. `iOS browser demo` Actions 실행이 성공했는지 확인합니다. 앱 빌드와 UI 테스트는 각각 확인해야 합니다.
+1. `iOS browser demo` Actions 실행이 성공했는지 확인합니다. 기본 실행은 컴파일과 패키징을 확인하며, 자동 UI 테스트 통과를 의미하지 않습니다.
 2. 실행 페이지의 `Shallpick-Appetize-<commit>` artifact를 내려받아 **한 번 압축 해제**합니다.
 3. 그 안의 **Shallpick-Appetize.zip**을 Appetize에 업로드합니다. artifact 바깥 ZIP이나 `.ipa`를 올리지 않습니다.
 4. `BUILD.txt`의 커밋을 PR과 대조합니다. `SHA256.txt`는 업로드용 ZIP 해시입니다.
@@ -42,8 +42,27 @@ Actions 산출물은 14일 보관됩니다. 필요하면 내려받아 보관합�
 - 표준 GitHub `macos-15` 실행기에서 Xcode 26.3을 선택하며 로그에 버전을 남깁니다. 일반 빌드와 시연 빌드는 같은 작업 폴더를 순서대로 사용해 공통 라이브러리 빌드를 재사용합니다.
 - 일반 앱과 시연 앱을 각각 컴파일합니다. 배포 인증서와 Apple Developer 유료 계정은 이 시뮬레이터 빌드에 필요하지 않습니다.
 - `scripts/configure-ui-tests.rb`가 CI 작업 공간에만 UI 테스트 타깃을 만듭니다. 팀의 Xcode 프로젝트 파일을 덮어쓴 결과는 커밋하지 않습니다.
-- `UITests/DemoFlowTests.swift`가 사진 선택, 질문 전송, 재진입 후 유지, 초기화, 샘플 사진 추가, 알림 이동, 종료를 확인합니다.
-- `iOS-demo-verification-<commit>`에 로그, XCTest 결과와 실제 시뮬레이터 스크린샷을 남깁니다. 빌드 ZIP이 있어도 테스트 실패 시 검증 완료로 표시하지 않습니다.
+- 자동 UI 테스트는 **Run workflow → run_ui_tests**를 켜서 별도로 실행합니다. `UITests/DemoFlowTests.swift`에 사진 선택, 질문 전송, 재진입 후 유지, 초기화, 샘플 사진 추가, 알림 이동, 종료 검증을 준비했습니다. 첫 실행은 호스팅 실행기의 시뮬레이터 시작 단계가 진행되지 않아 취소했으며, 테스트 통과로 기록하지 않습니다.
+- `iOS-demo-verification-<commit>`에 빌드 로그를 남깁니다. UI 테스트를 실행한 경우에만 XCTest 결과와 실제 시뮬레이터 스크린샷이 추가됩니다. UI 테스트는 12분 제한을 두고, 실패하면 해당 실행도 실패로 표시합니다.
 - Appetize 계정/API 토큰은 저장소에 넣지 않습니다. 최초 연결은 계정 소유자가 로그인한 브라우저에서 업로드합니다. 자동 업로드는 별도 API 자격증명을 연결한 이후에 추가할 수 있습니다.
 
 출처: [Appetize iOS 업로드 규격](https://docs.appetize.io/platform/app-management/uploading-apps/ios), [GitHub macOS 실행기 구성](https://github.com/actions/runner-images/blob/main/images/macos/macos-15-arm64-Readme.md). Appetize 요금제별 실행 시간은 계정 화면에서 확인합니다.
+
+## 화면 수정 의견 모으기
+
+실제 Appetize 화면을 확인하고, 같은 빌드의 캡처를 Figma 검토 페이지에 모아 위치별 댓글을 남깁니다. 디자인 원안과 실제 앱 캡처는 구분합니다.
+
+- 모양: `화면 / 위치 / 원하는 변화`. 예: `폴더 화면 / 상단 제목 / 두 줄까지 보이게`.
+- 동작: `누른 순서 / 실제 결과 / 기대 결과`. 예: `사진 2장 선택 → 다음 / 첨부가 사라짐 / 선택한 두 장이 질문에 붙어야 함`.
+- 한 댓글에는 한 가지 변경만 적고, 의견을 모은 뒤 한 번에 전달합니다.
+- 반영 순서: 동작 오류 → 화면 구조 → 크기와 간격 → 문구. 수정 전후 캡처와 확인 결과를 PR에 남깁니다.
+- 기본 검토 화면: 홈, 폴더, 사진 선택, 채팅. 웹 DOM을 전제로 하는 Agentation이 Appetize 영상 안의 SwiftUI 요소를 바로 찾는다고 가정하지 않습니다.
+
+| 화면 | 주로 수정할 파일 |
+| --- | --- |
+| 홈 | `HomeView.swift`, `HomeHeader.swift`, `HomeBottomBar.swift`, `FolderCards.swift` |
+| 폴더 | `FolderDetailView.swift` |
+| 사진 선택 | `FolderPhotoSelectView.swift` |
+| 채팅 | `ChatView.swift`, `ChatStore.swift` |
+
+2026-11-17 Appetize의 iPhone 14 Pro / iOS 26에서 앱 실행, 샘플 폴더와 사진 표시, 사진 선택 표시, 채팅 화면 진입을 확인했습니다. 자동 UI 테스트 전체 통과와 실제 다중 사용자 동기화는 아직 확인하지 않았습니다. 무료 계정에서는 세션당 3분 제한이 표시되었으며, 종료 시 다시 시작할 수 있습니다.
