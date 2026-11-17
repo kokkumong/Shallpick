@@ -35,10 +35,12 @@ enum PhotoRepository {
 
     enum PhotoError: LocalizedError {
         case unreadableImage
+        case libraryDenied
 
         var errorDescription: String? {
             switch self {
             case .unreadableImage: "사진을 읽지 못했어요."
+            case .libraryDenied: "사진을 저장하려면 설정에서 사진 추가를 허용해 주세요."
             }
         }
     }
@@ -160,6 +162,34 @@ enum PhotoRepository {
                 .execute()
             onProgress(index + 1)
         }
+    }
+
+    /// 폴더 사진 원본을 받아 기기 사진 보관함에 차례로 저장. 하나 끝날 때마다 onProgress(저장한 개수)
+    static func saveToLibrary(_ photos: [PhotoItem], onProgress: (Int) -> Void = { _ in }) async throws {
+        guard await PhotoLibrary.requestAddAccess() else { throw PhotoError.libraryDenied }
+        let storage = try client.storage.from(bucket)
+        for (index, photo) in photos.enumerated() {
+            let data = try await storage.download(path: photo.storagePath)
+            try await PhotoLibrary.addPhoto(data)
+            onProgress(index + 1)
+        }
+    }
+
+    /// 내가 올린 사진만 지웁니다 (다른 사람 사진은 RLS 로 막힘). 줄을 먼저 지우고 파일을 지움
+    static func delete(_ photos: [PhotoItem]) async throws {
+        guard let me = currentUserID else { return }
+        let mine = photos.filter { $0.uploaderID == me }
+        guard !mine.isEmpty else { return }
+        let client = try client
+        try await client
+            .from("photos")
+            .delete()
+            .in("id", values: mine.map(\.id))
+            .eq("uploader_id", value: me)
+            .execute()
+        // 파일이 남아도 화면엔 안 보이므로, 파일 지우기 실패는 넘어감
+        _ = try? await client.storage.from(bucket).remove(paths: mine.map(\.storagePath))
+        for photo in mine { signedURLCache[photo.storagePath] = nil }
     }
 
     private static func jpegData(_ image: UIImage) async -> Data? {

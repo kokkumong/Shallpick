@@ -23,12 +23,26 @@ struct FolderDetailView: View {
     @State private var isShowingPhotoPicker = false
     @State private var isShowingQuestionPicker = false
     @State private var isShowingInvite = false
-    @State private var upload: UploadProgress?
+    /// 사진을 꾹 누르면 선택 모드 (nil 이면 보통 화면). 고른 사진 id
+    @State private var selection: Set<UUID>?
+    /// 올리기 / 저장하기 진행 상황 (위에 작은 알림)
+    @State private var progress: BusyProgress?
+    /// 잠깐 떴다 사라지는 알림 (예: 저장했어요)
+    @State private var notice: String?
+    /// 삭제 확인을 기다리는 사진
+    @State private var pendingDelete: [PhotoItem]?
     @State private var errorMessage: String?
 
-    private struct UploadProgress: Equatable {
+    private struct BusyProgress: Equatable {
+        let title: String
         var done: Int
         let total: Int
+    }
+
+    /// 선택한 사진 (화면 순서)
+    private var selectedPhotos: [PhotoItem] {
+        guard let selection else { return [] }
+        return photos.filter { selection.contains($0.id) }
     }
 
     init(
@@ -71,7 +85,10 @@ struct FolderDetailView: View {
             .animation(.snappy(duration: 0.25), value: isShowingInvite)
             .toolbar(.hidden, for: .navigationBar)
             .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
-            .animation(.snappy(duration: 0.2), value: upload)
+            .animation(.snappy(duration: 0.2), value: progress)
+            .animation(.snappy(duration: 0.2), value: notice)
+            .animation(.snappy(duration: 0.2), value: selection == nil)
+            .sensoryFeedback(.impact(weight: .medium), trigger: selection == nil) { wasNormal, _ in wasNormal }
             .navigationDestination(isPresented: $isShowingChat) {
                 ChatView(folder: folder, attaching: chatAttachments)
             }
@@ -96,6 +113,22 @@ struct FolderDetailView: View {
                 }
             }
             .alert(
+                deleteAlertTitle,
+                isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                presenting: pendingDelete
+            ) { targets in
+                if deletableCount(targets) > 0 {
+                    Button("취소", role: .cancel) {}
+                    Button("삭제", role: .destructive) {
+                        Task { await deletePhotos(targets) }
+                    }
+                } else {
+                    Button("확인", role: .cancel) {}
+                }
+            } message: { targets in
+                Text(deleteAlertMessage(targets))
+            }
+            .alert(
                 "문제가 생겼어요",
                 isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
             ) {
@@ -111,8 +144,20 @@ struct FolderDetailView: View {
         if photos.isEmpty {
             EmptyPhotoView()
         } else {
-            PhotoGrid(photos: photos.filtered(by: filters))
-                .refreshable { await reload() }
+            PhotoGrid(
+                photos: photos.filtered(by: filters),
+                selection: selection,
+                onLongPress: { photo in
+                    isShowingFilterMenu = false
+                    selection = [photo.id]
+                },
+                onToggle: { photo in
+                    guard var current = selection else { return }
+                    if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
+                    selection = current
+                }
+            )
+            .refreshable { await reload() }
         }
     }
 
@@ -128,11 +173,11 @@ struct FolderDetailView: View {
 
     private func uploadPhotos(_ assets: [PHAsset]) async {
         guard !assets.isEmpty else { return }
-        upload = UploadProgress(done: 0, total: assets.count)
-        defer { upload = nil }
+        progress = BusyProgress(title: "사진 올리는 중", done: 0, total: assets.count)
+        defer { progress = nil }
         do {
             try await PhotoRepository.upload(assets, to: folder.id) { done in
-                upload?.done = done
+                progress?.done = done
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -140,17 +185,87 @@ struct FolderDetailView: View {
         await reload()
     }
 
-    /// 올리는 동안 위에 뜨는 작은 알림
+    // MARK: - 선택 모드: 저장 / 삭제
+
+    /// 선택한 사진을 기기 사진 보관함에 저장하고 선택 모드를 끝냄
+    private func saveSelected() async {
+        let targets = selectedPhotos
+        guard !targets.isEmpty, progress == nil else { return }
+        progress = BusyProgress(title: "사진 저장 중", done: 0, total: targets.count)
+        do {
+            try await PhotoRepository.saveToLibrary(targets) { done in
+                progress?.done = done
+            }
+            progress = nil
+            selection = nil
+            showNotice("사진 \(targets.count)장을 저장했어요")
+        } catch {
+            progress = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func deletableCount(_ targets: [PhotoItem]) -> Int {
+        let me = PhotoRepository.currentUserID
+        return targets.count { $0.uploaderID == me }
+    }
+
+    private var deleteAlertTitle: String {
+        guard let pendingDelete else { return "" }
+        let count = deletableCount(pendingDelete)
+        return count > 0 ? "사진 \(count)장을 삭제할까요?" : "삭제할 수 없어요"
+    }
+
+    private func deleteAlertMessage(_ targets: [PhotoItem]) -> String {
+        let count = deletableCount(targets)
+        let others = targets.count - count
+        if count == 0 { return "다른 사람이 올린 사진은 삭제할 수 없어요." }
+        let base = "폴더의 모든 사람에게서 사라지고 되돌릴 수 없어요."
+        return others > 0 ? base + "\n다른 사람이 올린 사진 \(others)장은 삭제되지 않아요." : base
+    }
+
+    private func deletePhotos(_ targets: [PhotoItem]) async {
+        do {
+            try await PhotoRepository.delete(targets)
+            let me = PhotoRepository.currentUserID
+            let removed = Set(targets.filter { $0.uploaderID == me }.map(\.id))
+            photos.removeAll { removed.contains($0.id) }
+            selection = nil
+            showNotice("사진 \(removed.count)장을 삭제했어요")
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        await reload()
+    }
+
+    private func showNotice(_ text: String) {
+        notice = text
+        Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            if notice == text { notice = nil }
+        }
+    }
+
+    /// 올리기·저장 중이거나 방금 끝났을 때 위에 뜨는 작은 알림
     @ViewBuilder
     private var uploadBanner: some View {
-        if let upload {
+        if progress != nil || notice != nil {
             HStack(spacing: 8) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("사진 올리는 중 \(upload.done)/\(upload.total)")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.black800)
-                    .monospacedDigit()
+                if let progress {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("\(progress.title) \(progress.done)/\(progress.total)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.black800)
+                        .monospacedDigit()
+                } else if let notice {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.black800)
+                    Text(notice)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.black800)
+                }
             }
             .padding(.horizontal, 16)
             .frame(height: 36)
@@ -165,7 +280,10 @@ struct FolderDetailView: View {
 
     private var header: some View {
         HStack(spacing: 0) {
-            CircleIconButton(icon: .iconBack, accessibilityLabel: "뒤로") { dismiss() }
+            // 선택 모드에서는 뒤로 = 선택 끝내기
+            CircleIconButton(icon: .iconBack, accessibilityLabel: selection == nil ? "뒤로" : "선택 끝내기") {
+                if selection != nil { selection = nil } else { dismiss() }
+            }
 
             // 제목 + ⌄ : 누르면 초대 QR / 참여 코드
             Button { isShowingInvite = true } label: {
@@ -186,16 +304,34 @@ struct FolderDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
 
-            HStack(spacing: 8) {
-                CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
-                CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
-                    if let onOpenChat {
-                        onOpenChat()
-                    } else {
-                        chatAttachments = []
-                        isShowingChat = true
+            if selection != nil {
+                // 꾹 눌렀을 때 (396:4657): 저장 / 삭제
+                HStack(spacing: 8) {
+                    CircleIconButton(icon: .iconDownload, accessibilityLabel: "저장") {
+                        Task { await saveSelected() }
+                    }
+                    CircleIconButton(icon: .iconDelete, accessibilityLabel: "삭제") {
+                        let targets = selectedPhotos
+                        if !targets.isEmpty { pendingDelete = targets }
                     }
                 }
+                // 고른 사진이 없거나 저장 중이면 누를 수 없음
+                .disabled(selectedPhotos.isEmpty || progress != nil)
+                .opacity(selectedPhotos.isEmpty ? 0.4 : 1)
+                .transition(.opacity)
+            } else {
+                HStack(spacing: 8) {
+                    CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
+                    CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
+                        if let onOpenChat {
+                            onOpenChat()
+                        } else {
+                            chatAttachments = []
+                            isShowingChat = true
+                        }
+                    }
+                }
+                .transition(.opacity)
             }
         }
         .frame(height: 52)
@@ -207,11 +343,14 @@ struct FolderDetailView: View {
 
     // MARK: - 하단 (190:22267)
 
+    /// 선택 모드에서도 필터·수달은 같은 자리에 그대로 두고, + 만 숨깁니다 (수달이 움직이지 않게)
     private var bottomBar: some View {
         HStack {
             HStack(spacing: 8) {
                 PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
                 OtterButton(accessibilityLabel: "질문에 첨부할 사진 고르기") {
+                    // 선택 모드에서 수달이 할 일은 아직 정하지 않음
+                    guard selection == nil else { return }
                     isShowingFilterMenu = false
                     isShowingQuestionPicker = true
                 }
@@ -219,9 +358,12 @@ struct FolderDetailView: View {
 
             Spacer()
 
-            CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
-                isShowingFilterMenu = false
-                isShowingPhotoPicker = true
+            if selection == nil {
+                CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
+                    isShowingFilterMenu = false
+                    isShowingPhotoPicker = true
+                }
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, 24)
@@ -318,6 +460,10 @@ extension [PhotoItem] {
 /// 4열 정사각형, 간격 10 (246:5209)
 private struct PhotoGrid: View {
     let photos: [PhotoItem]
+    /// nil 이면 보통 모드
+    var selection: Set<UUID>?
+    var onLongPress: (PhotoItem) -> Void = { _ in }
+    var onToggle: (PhotoItem) -> Void = { _ in }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
 
@@ -325,13 +471,45 @@ private struct PhotoGrid: View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(photos) { photo in
-                    FolderPhotoCell(photo: photo)
+                    cell(photo)
                 }
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
         }
         .scrollIndicators(.hidden)
+    }
+
+    /// 보통: 꾹 누르면 선택 모드. 선택 모드: 누를 때마다 체크 (왼쪽 위 동그라미, 237:26720)
+    /// 모드가 바뀌어도 같은 칸을 유지해야 사진을 다시 받지 않음 (체크·테두리만 얹음)
+    private func cell(_ photo: PhotoItem) -> some View {
+        let isSelecting = selection != nil
+        let isSelected = selection?.contains(photo.id) == true
+        return FolderPhotoCell(photo: photo)
+            .overlay {
+                if isSelected {
+                    Rectangle().strokeBorder(Color.black800, lineWidth: 4)
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                if isSelecting {
+                    SelectionCheck(isOn: isSelected)
+                        .transition(.opacity)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isSelecting { onToggle(photo) }
+            }
+            .onLongPressGesture(minimumDuration: 0.4) {
+                if !isSelecting { onLongPress(photo) }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("사진")
+            .accessibilityAddTraits(isSelecting ? [.isButton] : [])
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+            .accessibilityAction { if isSelecting { onToggle(photo) } }
+            .accessibilityAction(named: "선택") { if !isSelecting { onLongPress(photo) } }
     }
 }
 

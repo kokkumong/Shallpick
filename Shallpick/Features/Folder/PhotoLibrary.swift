@@ -23,6 +23,23 @@ enum PhotoLibrary {
         }
     }
 
+    /// 사진 보관함에 추가만 하는 권한 (저장하기)
+    static func requestAddAccess() async -> Bool {
+        var status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        if status == .notDetermined {
+            status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        }
+        return status == .authorized || status == .limited
+    }
+
+    /// 사진 보관함에 이미지 한 장 추가.
+    /// performChanges 블록은 백그라운드에서 돌므로 메인 액터에 묶이지 않게 nonisolated 로 둡니다.
+    nonisolated static func addPhoto(_ data: Data) async throws {
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetCreationRequest.forAsset().addResource(with: .photo, data: data, options: nil)
+        }
+    }
+
     /// 최근 사진부터
     static func fetchImages(favoritesOnly: Bool = false) -> PHFetchResult<PHAsset> {
         let options = PHFetchOptions()
