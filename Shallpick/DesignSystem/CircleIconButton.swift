@@ -19,12 +19,24 @@ struct CircleIcon: View {
         style == .plain ? .white : .black800
     }
 
-    let icon: ImageResource
+    private let image: Image
     var iconSize: CGFloat = 24
     var style: Style = .plain
 
+    init(icon: ImageResource, iconSize: CGFloat = 24, style: Style = .plain) {
+        image = Image(icon)
+        self.iconSize = iconSize
+        self.style = style
+    }
+
+    init(systemName: String, iconSize: CGFloat = 24, style: Style = .plain) {
+        image = Image(systemName: systemName)
+        self.iconSize = iconSize
+        self.style = style
+    }
+
     var body: some View {
-        Image(icon)
+        image
             .resizable()
             .scaledToFit()
             .frame(width: iconSize, height: iconSize)

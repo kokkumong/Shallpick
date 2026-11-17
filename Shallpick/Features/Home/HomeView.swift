@@ -7,14 +7,11 @@ struct HomeView: View {
     var onSignOut: () -> Void = {}
 
     @State private var profile: Profile?
-    @State private var layout: FolderLayout = .grid
     @State private var isShowingAccountMenu = false
     @State private var folderDialog: FolderDialog?
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
     @State private var isShowingQRScanner = false
-    @State private var isSearching = false
-    @State private var searchText = ""
     /// 폴더 → 채팅 순으로 쌓이는 화면 경로
     @State private var path: [HomeRoute] = []
     @State private var questionAlerts = QuestionAlertCenter()
@@ -36,8 +33,6 @@ struct HomeView: View {
                     case let .folder(folder):
                         FolderDetailView(
                             folder: folder,
-                            avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
-                            onAskQuestion: { photos in path.append(.chat(folder, attaching: photos)) },
                             onOpenChat: { path.append(.chat(folder)) }
                         )
                     case let .chat(folder, photos):
@@ -96,19 +91,19 @@ struct HomeView: View {
                         .background(Color.blue100)
                     }
                     HomeHeader(
-                    avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
-                    searchText: $searchText,
-                    isSearching: $isSearching,
-                    onProfile: { isShowingAccountMenu = true }
+                        onNotifications: {
+                            if DemoStore.shared.isActive, let alert = DemoStore.shared.sampleQuestion() {
+                                questionAlerts.present(alert)
+                            } else {
+                                notificationNotice = "새로운 질문은 도착하면 화면에 알려드려요."
+                            }
+                        },
+                        onProfile: { isShowingAccountMenu = true }
                     )
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HomeBottomBar(
-                    layout: $layout,
-                    onNotifications: {
-                        if DemoStore.shared.isActive, let alert = DemoStore.shared.sampleQuestion() { questionAlerts.present(alert) }
-                    },
                     onCreateFolder: { folderDialog = .create },
                     onJoinWithCode: { folderDialog = .join(code: DemoStore.shared.isActive ? "DEMO26" : "") },
                     onJoinWithQR: {
@@ -176,23 +171,12 @@ struct HomeView: View {
         case let folders? where folders.isEmpty:
             EmptyFolderView()
         case let folders?:
-            let results = folders.matching(searchText)
-            // 결과가 없어도 목록(ScrollView)은 그대로 둬야 입력 중 키보드가 내려가지 않음
             FolderCollectionView(
-                folders: results,
-                layout: layout,
+                folders: folders,
                 onSelect: { path.append(.folder($0)) },
                 onInvite: { invitingFolder = $0 }
             )
             .refreshable { await reloadFolders() }
-            .overlay {
-                if results.isEmpty {
-                    NoSearchResultView(query: searchText)
-                        .transition(.opacity)
-                }
-            }
-            .animation(.snappy(duration: 0.3), value: layout)
-            .animation(.snappy(duration: 0.25), value: searchText)
         }
     }
 

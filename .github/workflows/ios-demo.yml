@@ -2,7 +2,7 @@ name: iOS browser demo
 
 on:
   push:
-    branches: [main]
+    branches: [main, feat/ui-feedback]
     paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
   pull_request:
     branches: [main]
@@ -64,7 +64,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Exercise demo on iPhone simulator
-        if: github.event_name == 'workflow_dispatch' && inputs.run_ui_tests
+        if: github.ref == 'refs/heads/feat/ui-feedback' || (github.event_name == 'workflow_dispatch' && inputs.run_ui_tests)
         timeout-minutes: 12
         run: |
           set -o pipefail
