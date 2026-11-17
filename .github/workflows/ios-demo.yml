@@ -42,7 +42,7 @@ jobs:
           xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
-            'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SHALLPICK_DEMO' \
+            SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/demo-build.log | xcbeautify
           APP=build/demo/Build/Products/Debug-iphonesimulator/Shallpick.app
           test -d "$APP"
@@ -67,7 +67,7 @@ jobs:
           xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
             -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" \
             -derivedDataPath build/demo -resultBundlePath build/DemoTests.xcresult \
-            CODE_SIGNING_ALLOWED=NO 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=DEBUG SHALLPICK_DEMO' \
+            CODE_SIGNING_ALLOWED=NO SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= \
             -parallel-testing-enabled NO test 2>&1 | tee build/ui-tests.log | xcbeautify
       - name: Export actual simulator screenshots

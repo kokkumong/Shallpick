@@ -26,7 +26,7 @@ final class DemoFlowTests: XCTestCase {
         app.buttons["사진"].element(boundBy: 1).tap()
         capture("04-select")
         app.buttons["다음"].tap()
-        let field = app.textFields.firstMatch
+        let field = app.descendants(matching: .any).matching(identifier: "chat.draft").firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["사진 2장을 함께 보내요"].exists)
         field.tap()
