@@ -169,8 +169,9 @@ struct HomeView: View {
         }
     }
 
-    /// 다른 멤버가 나에게 보낸 질문을 앱 안 알림으로 띄움.
-    /// 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
+    /// 다른 멤버가 나에게 보낸 질문을 알림으로 띄움.
+    /// 앱을 보고 있으면 가운데 카드, 백그라운드면 앱 밖 알림. 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
+    /// (앱이 완전히 꺼져 있을 때는 서버 푸시가 있어야 해서 아직 안 옴)
     private func listenForQuestions() async {
         #if DEBUG
         // 실행 인자 -demoQuestionAlert 로 알림 모양 확인
@@ -201,8 +202,17 @@ struct HomeView: View {
                   message.recipientIDs.contains(userID),
                   !isViewingChat(of: message.folderID)
             else { continue }
-            if let alert = await makeAlert(for: message), !isViewingChat(of: message.folderID) {
+            guard let alert = await makeAlert(for: message), !isViewingChat(of: message.folderID) else { continue }
+            if UIApplication.shared.applicationState == .active {
                 questionAlerts.present(alert)
+            } else {
+                // 앱을 보고 있지 않으면 앱 밖 알림으로 ([폴더] 닉네임 / 질문)
+                await LocalNotifications.presentQuestion(
+                    id: message.id,
+                    folder: alert.folder,
+                    askerNickname: alert.askerNickname,
+                    question: alert.question
+                )
             }
         }
         await subscription.close()
@@ -224,7 +234,10 @@ struct HomeView: View {
             return
         }
         do {
-            try await LocalNotifications.scheduleTest(folder: folders?.first)
+            try await LocalNotifications.scheduleTest(
+                folder: folders?.first,
+                askerNickname: profile?.nickname ?? "샬픽 사용자"
+            )
             notificationNotice = "5초 뒤에 테스트 알림이 와요. 홈 화면으로 나가서 확인해 보세요."
         } catch {
             notificationNotice = "테스트 알림을 보내지 못했어요: \(error.localizedDescription)"

@@ -63,59 +63,96 @@ enum LocalNotifications {
         }
     }
 
-    /// 테스트 알림: seconds 초 뒤에 뜸 (그 사이 홈 화면으로 나가면 앱 밖 알림으로 보임)
-    /// folder 를 주면 알림을 눌렀을 때 그 폴더 채팅으로 이동
-    static func scheduleTest(folder: Folder?, after seconds: TimeInterval = 5) async throws {
-        let content = UNMutableNotificationContent()
-        content.title = "Shallpick"
-        content.body = "test"
-        content.sound = .default
-        if let folder {
-            content.subtitle = folder.name
-            content.userInfo = [PushPayloadKey.folderID: folder.id.uuidString]
-        }
-        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
-        let request = UNNotificationRequest(
-            identifier: "test-\(UUID().uuidString)",
-            content: await messageStyled(content, senderName: "Shallpick", groupName: folder?.name),
-            trigger: trigger
+    /// 테스트 알림: seconds 초 뒤에 질문 알림 모양으로 뜸 (그 사이 홈 화면으로 나가면 앱 밖 알림으로 보임)
+    static func scheduleTest(folder: Folder?, askerNickname: String, after seconds: TimeInterval = 5) async throws {
+        let content = await questionContent(
+            folderID: folder?.id,
+            folderName: folder?.name ?? "Shallpick",
+            askerNickname: askerNickname,
+            question: "test"
         )
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+        let request = UNNotificationRequest(identifier: "test-\(UUID().uuidString)", content: content, trigger: trigger)
         try await UNUserNotificationCenter.current().add(request)
     }
 
-    /// 메시지형 알림: 왼쪽 큰 동그라미에 보낸 사람 사진(지금은 수달), 귀퉁이에 작은 앱 아이콘.
-    /// Communication Notifications 권한이 없으면(실제 기기 + 무료 계정 등) 원래 모양 그대로 보냅니다.
-    static func messageStyled(
-        _ content: UNMutableNotificationContent,
-        senderName: String,
-        groupName: String?
+    /// 질문이 왔을 때 바로 띄우는 앱 밖 알림
+    static func presentQuestion(id: UUID, folder: Folder, askerNickname: String, question: String) async {
+        let content = await questionContent(
+            folderID: folder.id,
+            folderName: folder.name,
+            askerNickname: askerNickname,
+            question: question
+        )
+        let request = UNNotificationRequest(identifier: "question-\(id.uuidString)", content: content, trigger: nil)
+        do {
+            try await UNUserNotificationCenter.current().add(request)
+        } catch {
+            print("[Push] 질문 알림을 띄우지 못함:", error)
+        }
+    }
+
+    /// 질문 알림 내용
+    /// 첫 줄: [폴더 이름] 질문자 닉네임 (굵게) / 둘째 줄: 질문
+    /// 메시지형으로 바꿔서 왼쪽 큰 동그라미에 수달, 귀퉁이에 작은 앱 아이콘을 보여 줌.
+    /// 보낸 사람 이름을 "[폴더] 닉네임" 으로 한 1:1 대화로 만듭니다. (단체방으로 만들면 iOS 가
+    /// 보낸 사람 / 방 이름 / 내용 세 줄로 보여 줌)
+    /// Communication Notifications 권한이 없으면(실제 기기 + 무료 계정 등) 일반 알림 모양으로 보냅니다.
+    static func questionContent(
+        folderID: UUID?,
+        folderName: String,
+        askerNickname: String,
+        question: String
     ) async -> UNNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = "[\(folderName)] \(askerNickname)"
+        content.body = question
+        content.sound = .default
+        if let folderID {
+            content.userInfo = [PushPayloadKey.folderID: folderID.uuidString]
+            content.threadIdentifier = folderID.uuidString
+        }
+
         let avatar = UIImage(resource: .notificationAvatar).pngData().map(INImage.init(imageData:))
+        let folderKey = folderID?.uuidString ?? "test"
+        let senderKey = "\(folderKey):\(askerNickname)"
+        // 메시지형에서는 보낸 사람 이름이 첫 줄(굵게)에 나옴
         let sender = INPerson(
-            personHandle: INPersonHandle(value: "shallpick-otter", type: .unknown),
+            personHandle: INPersonHandle(value: senderKey, type: .unknown),
             nameComponents: nil,
-            displayName: senderName,
+            displayName: content.title,
             image: avatar,
             contactIdentifier: nil,
-            customIdentifier: "shallpick-otter"
+            customIdentifier: senderKey
+        )
+        let me = INPerson(
+            personHandle: INPersonHandle(value: "me", type: .unknown),
+            nameComponents: nil,
+            displayName: nil,
+            image: nil,
+            contactIdentifier: nil,
+            customIdentifier: "me",
+            isMe: true
         )
         let intent = INSendMessageIntent(
-            recipients: nil,
+            recipients: [me],
             outgoingMessageType: .outgoingMessageText,
             content: content.body,
-            speakableGroupName: groupName.map { INSpeakableString(spokenPhrase: $0) },
-            conversationIdentifier: content.userInfo[PushPayloadKey.folderID] as? String,
+            speakableGroupName: nil,
+            conversationIdentifier: folderKey,
             serviceName: nil,
             sender: sender,
             attachments: nil
         )
-        intent.setImage(avatar, forParameterNamed: \.sender)
 
         let interaction = INInteraction(intent: intent, response: nil)
         interaction.direction = .incoming
         do {
             try await interaction.donate()
-            return try content.updating(from: intent)
+            // 제목을 그대로 두면 첫 줄이 두 번 나와서 비움
+            let messageContent = content.mutableCopy() as! UNMutableNotificationContent
+            messageContent.title = ""
+            return try messageContent.updating(from: intent)
         } catch {
             print("[Push] 메시지형 알림으로 바꾸지 못해 기본 모양으로 보냄:", error)
             return content
