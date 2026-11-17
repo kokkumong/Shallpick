@@ -9,6 +9,8 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
     let createdAt: Date
     /// 첨부한 폴더 사진 (public.photos.id, 고른 순서)
     var photoIDs: [UUID] = []
+    /// 질문을 받을 멤버. 비어 있으면 폴더 모두 (보통 채팅)
+    var recipientIDs: [UUID] = []
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -17,15 +19,25 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         case body
         case createdAt = "created_at"
         case photoIDs = "photo_ids"
+        case recipientIDs = "recipient_ids"
     }
 
-    init(id: UUID, folderID: UUID, userID: UUID, body: String, createdAt: Date, photoIDs: [UUID] = []) {
+    init(
+        id: UUID,
+        folderID: UUID,
+        userID: UUID,
+        body: String,
+        createdAt: Date,
+        photoIDs: [UUID] = [],
+        recipientIDs: [UUID] = []
+    ) {
         self.id = id
         self.folderID = folderID
         self.userID = userID
         self.body = body
         self.createdAt = createdAt
         self.photoIDs = photoIDs
+        self.recipientIDs = recipientIDs
     }
 
     init(from decoder: Decoder) throws {
@@ -36,6 +48,7 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         body = try container.decode(String.self, forKey: .body)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         photoIDs = try container.decodeIfPresent([UUID].self, forKey: .photoIDs) ?? []
+        recipientIDs = try container.decodeIfPresent([UUID].self, forKey: .recipientIDs) ?? []
     }
 }
 
@@ -65,6 +78,23 @@ enum ChatRepository {
         let folder_id: UUID
         let body: String
         let photo_ids: [UUID]
+        let recipient_ids: [UUID]
+
+        // 보통 채팅은 recipient_ids 를 아예 보내지 않음 (DB 기본값 '{}')
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(id, forKey: .id)
+            try container.encode(folder_id, forKey: .folder_id)
+            try container.encode(body, forKey: .body)
+            try container.encode(photo_ids, forKey: .photo_ids)
+            if !recipient_ids.isEmpty {
+                try container.encode(recipient_ids, forKey: .recipient_ids)
+            }
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case id, folder_id, body, photo_ids, recipient_ids
+        }
     }
 
     private static var client: SupabaseClient {
@@ -95,10 +125,23 @@ enum ChatRepository {
     }
 
     /// id 는 앱에서 만들어 보냅니다. Realtime 으로 같은 메시지가 다시 와도 id 로 합칩니다.
-    static func send(id: UUID, folderID: UUID, body: String, photoIDs: [UUID] = []) async throws -> ChatMessage {
+    /// recipientIDs 를 주면 그 멤버에게만 가는 질문 (비우면 보통 채팅)
+    static func send(
+        id: UUID,
+        folderID: UUID,
+        body: String,
+        photoIDs: [UUID] = [],
+        recipientIDs: [UUID] = []
+    ) async throws -> ChatMessage {
         try await client
             .from("messages")
-            .insert(NewMessage(id: id, folder_id: folderID, body: body, photo_ids: photoIDs))
+            .insert(NewMessage(
+                id: id,
+                folder_id: folderID,
+                body: body,
+                photo_ids: photoIDs,
+                recipient_ids: recipientIDs
+            ))
             .select()
             .single()
             .execute()

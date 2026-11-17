@@ -195,7 +195,11 @@ struct HomeView: View {
         }
 
         for await message in subscription.messages {
-            guard message.userID != userID, !isViewingChat(of: message.folderID) else { continue }
+            // 받을 사람을 고른 질문이면 그 사람에게만
+            guard message.userID != userID,
+                  message.recipientIDs.isEmpty || message.recipientIDs.contains(userID),
+                  !isViewingChat(of: message.folderID)
+            else { continue }
             if let alert = await makeAlert(for: message), !isViewingChat(of: message.folderID) {
                 questionAlerts.present(alert)
             }

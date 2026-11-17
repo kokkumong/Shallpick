@@ -23,6 +23,8 @@ struct FolderDetailView: View {
     @State private var isShowingPhotoPicker = false
     @State private var isShowingQuestionPicker = false
     @State private var isShowingInvite = false
+    /// 선택 모드의 수달 → 고른 사진으로 질문 보내기 (Figma 3, 512:10261)
+    @State private var isShowingQuestionCompose = false
     /// 사진을 꾹 누르면 선택 모드 (nil 이면 보통 화면). 고른 사진 id
     @State private var selection: Set<UUID>?
     /// 올리기 / 저장하기 진행 상황 (위에 작은 알림)
@@ -111,6 +113,17 @@ struct FolderDetailView: View {
                         isShowingChat = true
                     }
                 }
+            }
+            .fullScreenCover(isPresented: $isShowingQuestionCompose) {
+                QuestionComposeView(
+                    folder: folder,
+                    photos: selectedPhotos,
+                    onRemovePhoto: { photo in selection?.remove(photo.id) },
+                    onSent: {
+                        selection = nil
+                        showNotice("질문을 보냈어요")
+                    }
+                )
             }
             .alert(
                 deleteAlertTitle,
@@ -359,9 +372,12 @@ struct FolderDetailView: View {
                     }
                     .transition(.opacity)
                 } else {
-                    // 선택 모드에서 수달이 할 일은 아직 정하지 않음
-                    OtterButton(accessibilityLabel: "수달") {}
-                        .transition(.opacity)
+                    OtterButton(accessibilityLabel: "고른 사진으로 질문 보내기") {
+                        guard !selectedPhotos.isEmpty else { return }
+                        isShowingFilterMenu = false
+                        isShowingQuestionCompose = true
+                    }
+                    .transition(.opacity)
                 }
             }
         }

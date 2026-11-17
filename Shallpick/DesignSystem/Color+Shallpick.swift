@@ -3,6 +3,8 @@ import SwiftUI
 /// Figma 디자인 토큰 (black50, black800(main) 등)
 extension Color {
     static let black50 = Color(hex: 0xFAFAFA)
+    /// 고른 칸 배경 (보낼 사람 선택)
+    static let black100 = Color(hex: 0xF5F5F5)
     static let black200 = Color(hex: 0xE6E6E6)
     static let black400 = Color(hex: 0xA5A5A5)
     /// 채팅 보낸 사람 이름
