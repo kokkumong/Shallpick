@@ -10,6 +10,7 @@ group = project.main_group.new_group('UITests', 'UITests')
 target.add_file_references([group.new_file('DemoFlowTests.swift')])
 target.build_configurations.each do |config|
   config.build_settings.merge!({
+    'PRODUCT_NAME' => 'ShallpickUITests',
     'PRODUCT_BUNDLE_IDENTIFIER' => 'com.shallpick.demo.uitests',
     'GENERATE_INFOPLIST_FILE' => 'YES',
     'TEST_TARGET_NAME' => 'Shallpick',

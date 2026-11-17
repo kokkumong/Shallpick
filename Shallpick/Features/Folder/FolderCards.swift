@@ -1,38 +1,18 @@
 import SwiftUI
 
-/// 메인 화면 폴더 목록 (그리드 / 리스트)
-/// Figma: 메인_그리드_폴더버전 (246:5191), 메인_리스트 (246:5246)
+/// 메인 화면 폴더 목록. Figma 댓글에 따라 리스트만 제공합니다.
 struct FolderCollectionView: View {
     let folders: [Folder]
-    let layout: FolderLayout
     var onSelect: (Folder) -> Void = { _ in }
     var onInvite: (Folder) -> Void = { _ in }
 
     var body: some View {
         ScrollView {
-            Group {
-                switch layout {
-                case .grid: grid
-                case .list: list
-                }
-            }
+            list
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
-    }
-
-    /// 2열, 마지막 한 개는 가운데 (246:5204)
-    private var grid: some View {
-        LazyVStack(spacing: 40) {
-            ForEach(rows, id: \.first!.id) { row in
-                HStack(spacing: 30) {
-                    ForEach(row) { folder in
-                        cell(folder) { FolderGridCard(folder: folder) }
-                    }
-                }
-            }
-        }
     }
 
     private var list: some View {
@@ -40,12 +20,6 @@ struct FolderCollectionView: View {
             ForEach(folders) { folder in
                 cell(folder) { FolderListCard(folder: folder) }
             }
-        }
-    }
-
-    private var rows: [[Folder]] {
-        stride(from: 0, to: folders.count, by: 2).map {
-            Array(folders[$0 ..< min($0 + 2, folders.count)])
         }
     }
 
@@ -274,12 +248,7 @@ extension Folder {
     }
 }
 
-#Preview("그리드") {
-    FolderCollectionView(folders: Folder.previews, layout: .grid)
-        .background(Color.black50)
-}
-
 #Preview("리스트") {
-    FolderCollectionView(folders: Folder.previews, layout: .list)
+    FolderCollectionView(folders: Folder.previews)
         .background(Color.black50)
 }

@@ -1,27 +1,18 @@
 import Photos
 import SwiftUI
 
-/// 폴더를 눌렀을 때 들어가는 화면: 사진 4열 그리드 + 상단(뒤로/이름/검색/채팅) + 하단(필터/수달/추가)
-/// Figma: 폴더안 (246:5208)
+/// 폴더 사진은 핀치로 2~5열 전환. 첫 칸에서 사진을 추가하고 하단에서 채팅을 엽니다.
+/// Figma 댓글: 487:4032.
 struct FolderDetailView: View {
     let folder: Folder
-    var avatarURL: URL?
     var onSearch: () -> Void = {}
-    /// 수달 → "질문에 첨부할 사진 선택" 에서 → 를 누르면 불립니다 (고른 순서대로).
-    /// 주면 밖에서 채팅을 열고, 없으면 이 화면에서 고른 사진을 붙여 채팅을 엽니다.
-    var onAskQuestion: (([PhotoItem]) -> Void)?
     /// 채팅 버튼. 주면 밖(HomeView 의 내비게이션 경로)에서 채팅을 열고, 없으면 이 화면에서 엽니다.
     var onOpenChat: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var photos: [PhotoItem]
-    @State private var filters: Set<PhotoFilter> = []
-    @State private var isShowingFilterMenu = false
     @State private var isShowingChat = false
-    /// 이 화면에서 채팅을 열 때 첫 메시지에 붙일 사진
-    @State private var chatAttachments: [PhotoItem] = []
     @State private var isShowingPhotoPicker = false
-    @State private var isShowingQuestionPicker = false
     @State private var isShowingInvite = false
     @State private var upload: UploadProgress?
     @State private var errorMessage: String?
@@ -33,16 +24,12 @@ struct FolderDetailView: View {
 
     init(
         folder: Folder,
-        avatarURL: URL? = nil,
         photos: [PhotoItem] = [],
         onSearch: @escaping () -> Void = {},
-        onAskQuestion: (([PhotoItem]) -> Void)? = nil,
         onOpenChat: (() -> Void)? = nil
     ) {
         self.folder = folder
-        self.avatarURL = avatarURL
         self.onSearch = onSearch
-        self.onAskQuestion = onAskQuestion
         self.onOpenChat = onOpenChat
         _photos = State(initialValue: photos)
     }
@@ -51,14 +38,6 @@ struct FolderDetailView: View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
-            .overlay {
-                // 필터 메뉴 바깥을 누르면 닫힘
-                if isShowingFilterMenu {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { isShowingFilterMenu = false }
-                }
-            }
             .safeAreaInset(edge: .top, spacing: 0) { header }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             .overlay(alignment: .top) { uploadBanner }
@@ -70,10 +49,9 @@ struct FolderDetailView: View {
             }
             .animation(.snappy(duration: 0.25), value: isShowingInvite)
             .toolbar(.hidden, for: .navigationBar)
-            .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
             .animation(.snappy(duration: 0.2), value: upload)
             .navigationDestination(isPresented: $isShowingChat) {
-                ChatView(folder: folder, attaching: chatAttachments)
+                ChatView(folder: folder)
             }
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
@@ -92,17 +70,6 @@ struct FolderDetailView: View {
                 .presentationCornerRadius(36)
                 .presentationDragIndicator(.hidden)
             }
-            // 수달 : 폴더 사진 중에서 질문에 첨부할 사진 고르기 (Figma 328:4864)
-            .fullScreenCover(isPresented: $isShowingQuestionPicker) {
-                FolderPhotoSelectView(photos: photos, avatarURL: avatarURL) { picked in
-                    if let onAskQuestion {
-                        onAskQuestion(picked)
-                    } else {
-                        chatAttachments = picked
-                        isShowingChat = true
-                    }
-                }
-            }
             .alert(
                 "문제가 생겼어요",
                 isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
@@ -116,12 +83,14 @@ struct FolderDetailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if photos.isEmpty {
-            EmptyPhotoView()
-        } else {
-            PhotoGrid(photos: photos.filtered(by: filters))
-                .refreshable { await reload() }
-        }
+        PhotoGrid(photos: photos) { isShowingPhotoPicker = true }
+            .refreshable { await reload() }
+            .overlay {
+                if photos.isEmpty {
+                    EmptyPhotoView()
+                        .allowsHitTesting(false)
+                }
+            }
     }
 
     private func reload() async {
@@ -194,17 +163,7 @@ struct FolderDetailView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
 
-            HStack(spacing: 8) {
-                CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
-                CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
-                    if let onOpenChat {
-                        onOpenChat()
-                    } else {
-                        chatAttachments = []
-                        isShowingChat = true
-                    }
-                }
-            }
+            CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
         }
         .frame(height: 52)
         .padding(.horizontal, 24)
@@ -217,20 +176,16 @@ struct FolderDetailView: View {
 
     private var bottomBar: some View {
         HStack {
-            HStack(spacing: 8) {
-                PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
-                OtterButton(accessibilityLabel: "질문에 첨부할 사진 고르기") {
-                    isShowingFilterMenu = false
-                    isShowingQuestionPicker = true
-                }
-            }
-
             Spacer()
 
-            CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
-                isShowingFilterMenu = false
-                isShowingPhotoPicker = true
+            CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
+                if let onOpenChat {
+                    onOpenChat()
+                } else {
+                    isShowingChat = true
+                }
             }
+            .accessibilityIdentifier("folder.chat")
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 33)
@@ -323,23 +278,90 @@ extension [PhotoItem] {
 
 // MARK: - 사진 그리드
 
-/// 4열 정사각형, 간격 10 (246:5209)
+/// 확대하면 더 큰 사진을 2열까지, 축소하면 5열까지 보여 줍니다.
 private struct PhotoGrid: View {
     let photos: [PhotoItem]
+    var onAddPhotos: () -> Void
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var columnCount = 4
+    @State private var pinchStartColumns: Int?
+    @GestureState private var isPinching = false
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 10), count: columnCount)
+    }
 
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
+                Button(action: onAddPhotos) {
+                    Color.blue100
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay {
+                            VStack(spacing: 6) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: columnCount >= 4 ? 20 : 26, weight: .regular))
+                                Text(columnCount == 5 ? "추가" : "사진 추가")
+                                    .font(.system(size: columnCount >= 4 ? 12 : 14, weight: .semibold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            .foregroundStyle(Color.folderTitle)
+                            .padding(6)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("사진 올리기")
+                .accessibilityHint("기기의 사진을 이 폴더에 추가해요")
+                .accessibilityIdentifier("folder.addPhotos")
+
                 ForEach(photos) { photo in
                     FolderPhotoCell(photo: photo)
+                        .accessibilityIdentifier("folder.photo.\(photo.id.uuidString)")
                 }
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
         }
         .scrollIndicators(.hidden)
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            MagnifyGesture(minimumScaleDelta: 0.03)
+                .updating($isPinching) { _, isPinching, _ in isPinching = true }
+                .onChanged { value in
+                    if pinchStartColumns == nil { pinchStartColumns = columnCount }
+                    guard let start = pinchStartColumns else { return }
+                    let target = Int((CGFloat(start) / max(value.magnification, 0.1)).rounded())
+                    setColumns(target)
+                }
+                .onEnded { _ in pinchStartColumns = nil }
+        )
+        .onChange(of: isPinching) { _, active in
+            // 시스템이 제스처를 취소해도 다음 핀치는 현재 열 수에서 시작합니다.
+            if !active { pinchStartColumns = nil }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("folder.photoGrid")
+        .accessibilityLabel("폴더 사진")
+        .accessibilityValue("\(columnCount)열, 사진 \(photos.count)장")
+        .accessibilityHint("두 손가락을 벌리거나 오므려 사진 크기를 바꿀 수 있어요")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: setColumns(columnCount - 1)
+            case .decrement: setColumns(columnCount + 1)
+            @unknown default: break
+            }
+        }
+    }
+
+    private func setColumns(_ requested: Int) {
+        let next = min(5, max(2, requested))
+        guard next != columnCount else { return }
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.25)) {
+            columnCount = next
+        }
     }
 }
 
@@ -358,7 +380,7 @@ private struct EmptyPhotoView: View {
                 Text("아직 사진이 없어요")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.black800)
-                Text("+ 버튼을 눌러 사진을 올려보세요")
+                Text("왼쪽 위 사진 추가를 눌러 함께 볼 사진을 올려보세요")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black400)
             }
