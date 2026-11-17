@@ -1,7 +1,7 @@
 import Photos
 import SwiftUI
 
-/// 폴더 사진은 핀치로 2~5열 전환. 하단은 왼쪽 사진 추가, 오른쪽 채팅.
+/// 폴더 사진은 핀치로 2~5열 전환. 첫 칸에서 사진을 추가하고 하단에서 채팅을 엽니다.
 /// Figma 댓글: 487:4032.
 struct FolderDetailView: View {
     let folder: Folder
@@ -83,12 +83,14 @@ struct FolderDetailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if photos.isEmpty {
-            EmptyPhotoView()
-        } else {
-            PhotoGrid(photos: photos)
-                .refreshable { await reload() }
-        }
+        PhotoGrid(photos: photos) { isShowingPhotoPicker = true }
+            .refreshable { await reload() }
+            .overlay {
+                if photos.isEmpty {
+                    EmptyPhotoView()
+                        .allowsHitTesting(false)
+                }
+            }
     }
 
     private func reload() async {
@@ -174,11 +176,6 @@ struct FolderDetailView: View {
 
     private var bottomBar: some View {
         HStack {
-            CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
-                isShowingPhotoPicker = true
-            }
-            .accessibilityIdentifier("folder.addPhotos")
-
             Spacer()
 
             CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
@@ -284,6 +281,7 @@ extension [PhotoItem] {
 /// 확대하면 더 큰 사진을 2열까지, 축소하면 5열까지 보여 줍니다.
 private struct PhotoGrid: View {
     let photos: [PhotoItem]
+    var onAddPhotos: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnCount = 4
@@ -297,6 +295,28 @@ private struct PhotoGrid: View {
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
+                Button(action: onAddPhotos) {
+                    Color.blue100
+                        .aspectRatio(1, contentMode: .fit)
+                        .overlay {
+                            VStack(spacing: 6) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: columnCount >= 4 ? 20 : 26, weight: .regular))
+                                Text(columnCount == 5 ? "추가" : "사진 추가")
+                                    .font(.system(size: columnCount >= 4 ? 12 : 14, weight: .semibold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                            .foregroundStyle(Color.folderTitle)
+                            .padding(6)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("사진 올리기")
+                .accessibilityHint("기기의 사진을 이 폴더에 추가해요")
+                .accessibilityIdentifier("folder.addPhotos")
+
                 ForEach(photos) { photo in
                     FolderPhotoCell(photo: photo)
                         .accessibilityIdentifier("folder.photo.\(photo.id.uuidString)")
@@ -360,7 +380,7 @@ private struct EmptyPhotoView: View {
                 Text("아직 사진이 없어요")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.black800)
-                Text("+ 버튼을 눌러 사진을 올려보세요")
+                Text("왼쪽 위 사진 추가를 눌러 함께 볼 사진을 올려보세요")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black400)
             }
