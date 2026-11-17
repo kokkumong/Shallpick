@@ -37,10 +37,11 @@ struct HomeView: View {
                         FolderDetailView(
                             folder: folder,
                             avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
+                            onAskQuestion: { photos in path.append(.chat(folder, attaching: photos)) },
                             onOpenChat: { path.append(.chat(folder)) }
                         )
-                    case let .chat(folder):
-                        ChatView(folder: folder)
+                    case let .chat(folder, photos):
+                        ChatView(folder: folder, attaching: photos)
                     }
                 }
         }
@@ -226,7 +227,7 @@ struct HomeView: View {
     }
 
     private func isViewingChat(of folderID: UUID) -> Bool {
-        if case let .chat(folder)? = path.last { return folder.id == folderID }
+        if case let .chat(folder, _)? = path.last { return folder.id == folderID }
         return false
     }
 
@@ -242,12 +243,16 @@ struct HomeView: View {
         async let members = try? ChatRepository.fetchMembers(folderID: folder.id)
         async let photos = try? PhotoRepository.fetch(folderID: folder.id)
         let nickname = await members?.first { $0.userID == message.userID }?.nickname ?? "샬픽 사용자"
+        // 질문에 붙은 사진이 있으면 그 사진, 없으면 폴더 최신 사진
+        let folderPhotos = await photos ?? []
+        let byID = Dictionary(folderPhotos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let attached = message.photoIDs.compactMap { byID[$0] }
         return QuestionAlert(
             id: message.id,
             folder: folder,
             askerNickname: nickname,
             question: message.body,
-            photoURLs: Array((await photos ?? []).compactMap(\.url).prefix(3))
+            photoURLs: Array((attached.isEmpty ? folderPhotos : attached).compactMap(\.url).prefix(3))
         )
     }
 
@@ -292,7 +297,8 @@ struct HomeView: View {
 /// 메인 화면에서 쌓이는 화면
 enum HomeRoute: Hashable {
     case folder(Folder)
-    case chat(Folder)
+    /// attaching: 폴더 화면의 수달로 고른 사진 (첫 메시지에 붙음)
+    case chat(Folder, attaching: [PhotoItem] = [])
 }
 
 private extension HomeView {

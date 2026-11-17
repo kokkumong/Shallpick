@@ -60,34 +60,17 @@ struct QuestionAlertCard: View {
 }
 
 /// 사진이 꽂힌 작은 폴더 + 폴더 이름 + 가리키는 수달 (237:27204, 167 × 153)
-/// 메인 화면 그리드 카드(FolderGridCard)를 0.3933 배로 줄인 배치와 같습니다.
 private struct FolderMiniIllustration: View {
     let folderName: String
     let photoURLs: [URL]
 
-    private let scale: CGFloat = 59 / 150
-    /// 그리드 카드 좌표 (0, 0) 이 이 그림에서 놓이는 위치
-    private let origin = CGPoint(x: 13, y: 12.04)
-    private let photoSize = CGSize(width: 29.16, height: 38.88)
-    private let frontFrame = CGRect(x: 13, y: 42, width: 59, height: 35)
+    /// 작은 폴더(59 × 59)가 이 그림에서 놓이는 위치
+    private let folderOrigin = CGPoint(x: 13, y: 15)
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            FolderBackShape()
-                .fill(Color.brandBlue)
-                .frame(width: 59.21, height: 51.4)
-                .shallpickShadow(blur: 20)
-                .offset(x: 13, y: 25.82)
-
-            photo(1, rotation: 4, gridCenter: CGPoint(x: 99.28, y: 51.7))
-            photo(0, rotation: -4, gridCenter: CGPoint(x: 50.28, y: 62.7))
-            photo(2, rotation: 0, gridCenter: CGPoint(x: 74.5, y: 84.28))
-
-            RoundedRectangle(cornerRadius: 4)
-                .fill(LinearGradient(colors: [.brandBlue, .folderBlueBottom], startPoint: .top, endPoint: .bottom))
-                .frame(width: frontFrame.width, height: frontFrame.height)
-                .shadow(color: .black.opacity(0.25), radius: 5)
-                .offset(x: frontFrame.minX, y: frontFrame.minY)
+            MiniPhotoFolder(photoURLs: photoURLs)
+                .offset(x: folderOrigin.x, y: folderOrigin.y)
 
             Text(folderName)
                 .font(.system(size: 11, weight: .semibold))
@@ -95,7 +78,10 @@ private struct FolderMiniIllustration: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: 72)
-                .position(x: frontFrame.midX, y: frontFrame.maxY + 12)
+                .position(
+                    x: folderOrigin.x + MiniPhotoFolder.frontFrame.midX,
+                    y: folderOrigin.y + MiniPhotoFolder.frontFrame.maxY + 12
+                )
 
             Image(.otterPoint)
                 .resizable()
@@ -107,13 +93,6 @@ private struct FolderMiniIllustration: View {
         .frame(width: 167, height: 153, alignment: .topLeading)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(folderName) 폴더")
-    }
-
-    private func photo(_ index: Int, rotation: Double, gridCenter: CGPoint) -> some View {
-        FolderPhoto(url: photoURLs[safe: index], cornerRadius: 4)
-            .frame(width: photoSize.width, height: photoSize.height)
-            .rotationEffect(.degrees(rotation))
-            .position(x: origin.x + gridCenter.x * scale, y: origin.y + gridCenter.y * scale)
     }
 }
 

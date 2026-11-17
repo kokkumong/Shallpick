@@ -7,6 +7,8 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
     let userID: UUID
     let body: String
     let createdAt: Date
+    /// 첨부한 폴더 사진 (public.photos.id, 고른 순서)
+    var photoIDs: [UUID] = []
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -14,6 +16,26 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         case userID = "user_id"
         case body
         case createdAt = "created_at"
+        case photoIDs = "photo_ids"
+    }
+
+    init(id: UUID, folderID: UUID, userID: UUID, body: String, createdAt: Date, photoIDs: [UUID] = []) {
+        self.id = id
+        self.folderID = folderID
+        self.userID = userID
+        self.body = body
+        self.createdAt = createdAt
+        self.photoIDs = photoIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        folderID = try container.decode(UUID.self, forKey: .folderID)
+        userID = try container.decode(UUID.self, forKey: .userID)
+        body = try container.decode(String.self, forKey: .body)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        photoIDs = try container.decodeIfPresent([UUID].self, forKey: .photoIDs) ?? []
     }
 }
 
@@ -35,11 +57,14 @@ enum ChatRepository {
     static let maxBodyLength = 1000
     /// 채팅방을 열 때 불러오는 최근 메시지 수
     static let historyLimit = 200
+    /// 한 메시지에 붙일 수 있는 사진 수 (DB check 와 같음)
+    static let maxPhotos = 30
 
     private struct NewMessage: Encodable {
         let id: UUID
         let folder_id: UUID
         let body: String
+        let photo_ids: [UUID]
     }
 
     private static var client: SupabaseClient {
@@ -70,10 +95,10 @@ enum ChatRepository {
     }
 
     /// id 는 앱에서 만들어 보냅니다. Realtime 으로 같은 메시지가 다시 와도 id 로 합칩니다.
-    static func send(id: UUID, folderID: UUID, body: String) async throws -> ChatMessage {
+    static func send(id: UUID, folderID: UUID, body: String, photoIDs: [UUID] = []) async throws -> ChatMessage {
         try await client
             .from("messages")
-            .insert(NewMessage(id: id, folder_id: folderID, body: body))
+            .insert(NewMessage(id: id, folder_id: folderID, body: body, photo_ids: photoIDs))
             .select()
             .single()
             .execute()

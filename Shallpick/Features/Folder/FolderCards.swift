@@ -206,6 +206,57 @@ struct FolderPhoto: View {
     }
 }
 
+/// 사진 3장이 꽂힌 작은 폴더 (59 × 59, 앞면이 아래로 3pt 넘침)
+/// 메인 화면 그리드 카드(FolderGridCard)를 59/150 배로 줄인 배치. 질문 알림 / 채팅 첨부에 씀
+/// Figma: 채팅 Component 14·17 (234:23864), 응답요청알람 (237:27204)
+struct MiniPhotoFolder: View {
+    let photoURLs: [URL?]
+
+    init(photoURLs: [URL?]) {
+        self.photoURLs = photoURLs
+    }
+
+    init(photoURLs: [URL]) {
+        self.photoURLs = photoURLs.map(Optional.some)
+    }
+
+    static let size = CGSize(width: 59, height: 59)
+    static let frontFrame = CGRect(x: 0, y: 27, width: 59, height: 35)
+
+    private let scale: CGFloat = 59 / 150
+    /// 그리드 카드 좌표 (0, 0) 이 이 그림에서 놓이는 위치
+    private let origin = CGPoint(x: 0, y: -2.96)
+    private let photoSize = CGSize(width: 29.16, height: 38.88)
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            FolderBackShape()
+                .fill(Color.brandBlue)
+                .frame(width: 59.21, height: 51.4)
+                .shallpickShadow(blur: 20)
+                .offset(y: 10.82)
+
+            photo(1, rotation: 4, gridCenter: CGPoint(x: 99.28, y: 51.7))
+            photo(0, rotation: -4, gridCenter: CGPoint(x: 50.28, y: 62.7))
+            photo(2, rotation: 0, gridCenter: CGPoint(x: 74.5, y: 84.28))
+
+            RoundedRectangle(cornerRadius: 4)
+                .fill(LinearGradient(colors: [.brandBlue, .folderBlueBottom], startPoint: .top, endPoint: .bottom))
+                .frame(width: Self.frontFrame.width, height: Self.frontFrame.height)
+                .shadow(color: .black.opacity(0.25), radius: 5)
+                .offset(x: Self.frontFrame.minX, y: Self.frontFrame.minY)
+        }
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
+    }
+
+    private func photo(_ index: Int, rotation: Double, gridCenter: CGPoint) -> some View {
+        FolderPhoto(url: photoURLs[safe: index] ?? nil, cornerRadius: 4)
+            .frame(width: photoSize.width, height: photoSize.height)
+            .rotationEffect(.degrees(rotation))
+            .position(x: origin.x + gridCenter.x * scale, y: origin.y + gridCenter.y * scale)
+    }
+}
+
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil

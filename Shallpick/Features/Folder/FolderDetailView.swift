@@ -8,7 +8,8 @@ struct FolderDetailView: View {
     var avatarURL: URL?
     var onSearch: () -> Void = {}
     /// 수달 → "질문에 첨부할 사진 선택" 에서 → 를 누르면 불립니다 (고른 순서대로).
-    var onAskQuestion: ([PhotoItem]) -> Void = { _ in }
+    /// 주면 밖에서 채팅을 열고, 없으면 이 화면에서 고른 사진을 붙여 채팅을 엽니다.
+    var onAskQuestion: (([PhotoItem]) -> Void)?
     /// 채팅 버튼. 주면 밖(HomeView 의 내비게이션 경로)에서 채팅을 열고, 없으면 이 화면에서 엽니다.
     var onOpenChat: (() -> Void)?
 
@@ -17,6 +18,8 @@ struct FolderDetailView: View {
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
     @State private var isShowingChat = false
+    /// 이 화면에서 채팅을 열 때 첫 메시지에 붙일 사진
+    @State private var chatAttachments: [PhotoItem] = []
     @State private var isShowingPhotoPicker = false
     @State private var isShowingQuestionPicker = false
     @State private var isShowingInvite = false
@@ -33,7 +36,7 @@ struct FolderDetailView: View {
         avatarURL: URL? = nil,
         photos: [PhotoItem] = [],
         onSearch: @escaping () -> Void = {},
-        onAskQuestion: @escaping ([PhotoItem]) -> Void = { _ in },
+        onAskQuestion: (([PhotoItem]) -> Void)? = nil,
         onOpenChat: (() -> Void)? = nil
     ) {
         self.folder = folder
@@ -70,7 +73,7 @@ struct FolderDetailView: View {
             .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
             .animation(.snappy(duration: 0.2), value: upload)
             .navigationDestination(isPresented: $isShowingChat) {
-                ChatView(folder: folder)
+                ChatView(folder: folder, attaching: chatAttachments)
             }
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
@@ -83,7 +86,14 @@ struct FolderDetailView: View {
             }
             // 수달 : 폴더 사진 중에서 질문에 첨부할 사진 고르기 (Figma 328:4864)
             .fullScreenCover(isPresented: $isShowingQuestionPicker) {
-                FolderPhotoSelectView(photos: photos, avatarURL: avatarURL, onNext: onAskQuestion)
+                FolderPhotoSelectView(photos: photos, avatarURL: avatarURL) { picked in
+                    if let onAskQuestion {
+                        onAskQuestion(picked)
+                    } else {
+                        chatAttachments = picked
+                        isShowingChat = true
+                    }
+                }
             }
             .alert(
                 "문제가 생겼어요",
@@ -179,7 +189,12 @@ struct FolderDetailView: View {
             HStack(spacing: 8) {
                 CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
                 CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
-                    if let onOpenChat { onOpenChat() } else { isShowingChat = true }
+                    if let onOpenChat {
+                        onOpenChat()
+                    } else {
+                        chatAttachments = []
+                        isShowingChat = true
+                    }
                 }
             }
         }
