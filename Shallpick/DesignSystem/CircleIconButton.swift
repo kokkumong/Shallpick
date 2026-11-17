@@ -31,7 +31,7 @@ struct CircleIcon: View {
             .foregroundStyle(foreground)
             .frame(width: 45, height: 45)
             .background(background, in: Circle())
-            .shallpickShadow()
+            .floatingShadow()
     }
 }
 
@@ -55,6 +55,12 @@ extension View {
     /// Figma: DropShadow (#000000 10%, offset 0, blur 40)
     func shallpickShadow(blur: CGFloat = 40) -> some View {
         shadow(color: .black.opacity(0.1), radius: blur / 2)
+    }
+
+    /// 떠 있는 동그라미 버튼용: 퍼지는 그림자에 가까운 그림자를 더해 흰 배경 위에서도 테두리가 보이게
+    func floatingShadow() -> some View {
+        shadow(color: .black.opacity(0.14), radius: 1.5, y: 1)
+            .shallpickShadow(blur: 24)
     }
 }
 

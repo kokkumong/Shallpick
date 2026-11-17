@@ -82,7 +82,7 @@ struct FolderLayoutPicker: View {
         }
         .padding(3)
         .background(.white, in: Capsule())
-        .shallpickShadow(blur: 20)
+        .floatingShadow()
         .animation(.snappy(duration: 0.2), value: selection)
     }
 

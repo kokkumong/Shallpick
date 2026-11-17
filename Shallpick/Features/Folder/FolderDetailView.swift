@@ -343,27 +343,26 @@ struct FolderDetailView: View {
 
     // MARK: - 하단 (190:22267)
 
-    /// 선택 모드에서도 필터·수달은 같은 자리에 그대로 두고, + 만 숨깁니다 (수달이 움직이지 않게)
+    /// 보통 화면: 필터 ... + / 선택 모드 (397:4908): 필터 ... 수달. 필터는 늘 같은 자리
     private var bottomBar: some View {
         HStack {
-            HStack(spacing: 8) {
-                PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
-                OtterButton(accessibilityLabel: "질문에 첨부할 사진 고르기") {
-                    // 선택 모드에서 수달이 할 일은 아직 정하지 않음
-                    guard selection == nil else { return }
-                    isShowingFilterMenu = false
-                    isShowingQuestionPicker = true
-                }
-            }
+            PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
 
             Spacer()
 
-            if selection == nil {
-                CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
-                    isShowingFilterMenu = false
-                    isShowingPhotoPicker = true
+            // 오른쪽 아래 자리: + 와 수달이 서로 바뀜
+            ZStack {
+                if selection == nil {
+                    CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
+                        isShowingFilterMenu = false
+                        isShowingPhotoPicker = true
+                    }
+                    .transition(.opacity)
+                } else {
+                    // 선택 모드에서 수달이 할 일은 아직 정하지 않음
+                    OtterButton(accessibilityLabel: "수달") {}
+                        .transition(.opacity)
                 }
-                .transition(.opacity)
             }
         }
         .padding(.horizontal, 24)

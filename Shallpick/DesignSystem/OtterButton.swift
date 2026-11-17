@@ -16,7 +16,7 @@ struct OtterButton: View {
                 .frame(width: 45, height: 45)
                 .background(.white)
                 .clipShape(Circle())
-                .shallpickShadow()
+                .floatingShadow()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)

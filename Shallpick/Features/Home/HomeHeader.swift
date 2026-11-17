@@ -48,7 +48,7 @@ struct HomeHeader: View {
                 ProfileAvatar(url: avatarURL)
                     .frame(width: 45, height: 45)
                     .clipShape(Circle())
-                    .shallpickShadow(blur: 20)
+                    .floatingShadow()
             }
             .buttonStyle(.plain)
             .accessibilityLabel("내 계정")
