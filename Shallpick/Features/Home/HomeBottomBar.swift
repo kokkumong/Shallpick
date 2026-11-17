@@ -64,13 +64,13 @@ struct FolderLayoutPicker: View {
                         Text(title(for: layout))
                             .font(.system(size: 10, weight: .semibold))
                     }
-                    .foregroundStyle(selection == layout ? Color.white : Color.black800)
+                    .foregroundStyle(selection == layout ? Color.black800 : Color.black600)
                     .frame(width: 62, height: 39)
                     .background {
                         // 스위치처럼 선택한 쪽으로 동그라미가 미끄러져 감
                         if selection == layout {
                             Capsule()
-                                .fill(Color.segmentSelected)
+                                .fill(Color.blue50)
                                 .matchedGeometryEffect(id: "selected", in: indicator)
                         }
                     }
