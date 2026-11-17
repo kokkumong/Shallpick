@@ -57,6 +57,9 @@ struct HomeView: View {
             if isBackHome { Task { await reloadCovers() } }
         }
         .task(id: userID) { await listenForMessages() }
+        #if DEBUG
+        .task(id: userID) { await simulateIncomingAfterBackground() }
+        #endif
         .task(id: userID) { await LocalNotifications.requestAuthorization() }
         // 앱 밖 알림을 눌러 들어오면 그 폴더 채팅으로
         .onChange(of: NotificationRouter.shared.pendingFolderID, initial: true) { _, folderID in
@@ -170,10 +173,11 @@ struct HomeView: View {
     }
 
     /// 다른 멤버가 보낸 채팅·질문을 알림으로 띄움. 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
-    /// - 앱을 보고 있을 때: 나에게 온 질문만 가운데 카드로
-    /// - 백그라운드일 때: 채팅과 나에게 온 질문을 앱 밖 알림으로 ([폴더] 닉네임 / 내용)
+    /// - 백그라운드에서 방금 받은 것: 채팅과 나에게 온 질문을 앱 밖 알림으로 ([폴더] 닉네임 / 내용)
+    /// - 그 밖 (앱을 보고 있을 때, 또는 앱이 멈춰 있는 동안 쌓였다가 다시 열 때 들어온 것):
+    ///   나에게 온 질문만 가운데 카드로. 늦게 온 것을 앱 밖 알림으로 띄우면 앱을 열 때 알림이 울림
     /// 질문은 받을 사람으로 고른 멤버에게만 알립니다.
-    /// (앱이 완전히 꺼져 있을 때는 서버 푸시가 있어야 해서 아직 안 옴)
+    /// (앱이 멈추거나 꺼져 있을 때 바로 받으려면 서버 푸시가 있어야 해서 아직 안 옴)
     private func listenForMessages() async {
         #if DEBUG
         // 실행 인자 -demoQuestionAlert 로 알림 모양 확인
@@ -198,25 +202,51 @@ struct HomeView: View {
         }
 
         for await message in subscription.messages {
-            guard message.userID != userID, !isViewingChat(of: message.folderID) else { continue }
-            // 다른 멤버에게 보낸 질문은 알리지 않음
-            if message.isQuestion, !message.recipientIDs.contains(userID) { continue }
-
-            if UIApplication.shared.applicationState == .active {
-                // 앱 안에서는 질문만 카드로 (보통 채팅은 채팅방에서 확인)
-                guard message.isQuestion,
-                      let alert = await makeAlert(for: message),
-                      !isViewingChat(of: message.folderID)
-                else { continue }
-                questionAlerts.present(alert)
-            } else {
-                guard let folder = await folder(id: message.folderID) else { continue }
-                let nickname = await nickname(of: message.userID, in: folder.id)
-                await LocalNotifications.presentMessage(message, folder: folder, senderNickname: nickname)
-            }
+            await handleIncoming(message)
         }
         await subscription.close()
     }
+
+    private func handleIncoming(_ message: ChatMessage) async {
+        guard message.userID != userID, !isViewingChat(of: message.folderID) else { return }
+        // 다른 멤버에게 보낸 질문은 알리지 않음
+        if message.isQuestion, !message.recipientIDs.contains(userID) { return }
+
+        if UIApplication.shared.applicationState != .active, LocalNotifications.isFresh(message) {
+            guard let folder = await folder(id: message.folderID) else { return }
+            let nickname = await nickname(of: message.userID, in: folder.id)
+            await LocalNotifications.presentMessage(message, folder: folder, senderNickname: nickname)
+        } else {
+            // 앱 안에서는 질문만 카드로 (보통 채팅은 채팅방에서 확인)
+            guard message.isQuestion,
+                  let alert = await makeAlert(for: message),
+                  !isViewingChat(of: message.folderID)
+            else { return }
+            questionAlerts.present(alert)
+        }
+    }
+
+    #if DEBUG
+    /// 실행 인자 -demoIncomingAfterBackground: 홈 화면으로 나간 뒤 15초, 60초에 다른 멤버의 사진 질문이 온 것처럼 흉내
+    /// 15초: 앱이 아직 깨어 있어 앱 밖 알림 / 60초: 앱이 멈춰 있어 다시 열 때 들어오므로 가운데 카드
+    private func simulateIncomingAfterBackground() async {
+        guard ProcessInfo.processInfo.arguments.contains("-demoIncomingAfterBackground") else { return }
+        for await _ in NotificationCenter.default.notifications(named: UIApplication.didEnterBackgroundNotification) {
+            guard let folder = folders?.first else { continue }
+            for delay in [15, 60] {
+                // 서버에 저장된 시각 = 보낸 시각. 앱이 멈춰 있으면 받는 건 그보다 늦어짐
+                let sentAt = Date.now.addingTimeInterval(TimeInterval(delay))
+                Task {
+                    try? await Task.sleep(for: .seconds(delay))
+                    await handleIncoming(ChatMessage(
+                        id: UUID(), folderID: folder.id, userID: UUID(), body: "\(delay)초 테스트",
+                        createdAt: sentAt, photoIDs: [UUID(), UUID()], recipientIDs: [userID]
+                    ))
+                }
+            }
+        }
+    }
+    #endif
 
     private func openChat(folderID: UUID) async {
         NotificationRouter.shared.pendingFolderID = nil

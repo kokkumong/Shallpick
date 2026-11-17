@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     ) -> Bool {
         // 앱이 꺼진 상태에서 알림을 눌러 켜질 때도 탭을 받으려면 실행 직후에 지정해야 함
         UNUserNotificationCenter.current().delegate = self
+        BackgroundKeepAlive.shared.start()
         return true
     }
 
@@ -46,7 +47,52 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
     }
 }
 
+/// 홈 화면으로 나간 뒤에도 iOS 가 허락하는 동안(보통 30초 안팎) 앱을 깨워 둬서
+/// 그 사이 온 채팅을 바로 앱 밖 알림으로 띄울 수 있게 함.
+/// 그 뒤에는 앱이 멈춰서 서버 푸시 없이는 알림을 띄울 수 없습니다.
+final class BackgroundKeepAlive {
+    static let shared = BackgroundKeepAlive()
+
+    private var task: UIBackgroundTaskIdentifier = .invalid
+    private var observers: [NSObjectProtocol] = []
+
+    func start() {
+        guard observers.isEmpty else { return }
+        let center = NotificationCenter.default
+        observers = [
+            center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { BackgroundKeepAlive.shared.begin() }
+            },
+            center.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { BackgroundKeepAlive.shared.end() }
+            },
+        ]
+    }
+
+    private func begin() {
+        end()
+        task = UIApplication.shared.beginBackgroundTask(withName: "realtime-chat") {
+            // 시간이 다 되면 iOS 가 부름. 끝내지 않으면 앱이 강제로 종료됨
+            MainActor.assumeIsolated { BackgroundKeepAlive.shared.end() }
+        }
+    }
+
+    private func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
+    }
+}
+
 enum LocalNotifications {
+    /// 이보다 오래된 메시지는 앱이 멈춰 있는 동안 쌓였다가 다시 열 때 들어온 것
+    static let freshness: TimeInterval = 20
+
+    /// 방금 보낸 메시지인지 (앱 밖 알림은 이것만 띄움)
+    static func isFresh(_ message: ChatMessage, now: Date = .now) -> Bool {
+        now.timeIntervalSince(message.createdAt) < freshness
+    }
+
     /// 처음 한 번 권한을 묻고, 이후에는 현재 상태만 돌려줌
     @discardableResult
     static func requestAuthorization() async -> Bool {
