@@ -1,3 +1,5 @@
+// xcode: set sdk=iOS
+
 import SwiftUI
 
 /// 흰 동그라미 안에 수달 (45pt)
