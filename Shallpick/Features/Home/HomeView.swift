@@ -169,7 +169,7 @@ struct HomeView: View {
         }
     }
 
-    /// 다른 멤버가 내 폴더에 보낸 새 메시지를 앱 안 알림으로 띄움.
+    /// 다른 멤버가 나에게 보낸 질문을 앱 안 알림으로 띄움.
     /// 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
     private func listenForQuestions() async {
         #if DEBUG
@@ -195,9 +195,10 @@ struct HomeView: View {
         }
 
         for await message in subscription.messages {
-            // 받을 사람을 고른 질문이면 그 사람에게만
-            guard message.userID != userID,
-                  message.recipientIDs.isEmpty || message.recipientIDs.contains(userID),
+            // 수달로 보낸 질문 중 나를 받을 사람으로 고른 것만. 보통 채팅(받을 사람 없음)은 알림 없음
+            guard message.isQuestion,
+                  message.userID != userID,
+                  message.recipientIDs.contains(userID),
                   !isViewingChat(of: message.folderID)
             else { continue }
             if let alert = await makeAlert(for: message), !isViewingChat(of: message.folderID) {

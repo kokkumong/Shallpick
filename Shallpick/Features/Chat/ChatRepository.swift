@@ -40,6 +40,9 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         self.recipientIDs = recipientIDs
     }
 
+    /// 수달로 받을 사람을 골라 보낸 질문 (보통 채팅은 받을 사람이 비어 있음)
+    var isQuestion: Bool { !recipientIDs.isEmpty }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
