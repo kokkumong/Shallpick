@@ -56,7 +56,7 @@ struct HomeView: View {
         .onChange(of: path.isEmpty) { _, isBackHome in
             if isBackHome { Task { await reloadCovers() } }
         }
-        .task(id: userID) { await listenForQuestions() }
+        .task(id: userID) { await listenForMessages() }
         .task(id: userID) { await LocalNotifications.requestAuthorization() }
         // 앱 밖 알림을 눌러 들어오면 그 폴더 채팅으로
         .onChange(of: NotificationRouter.shared.pendingFolderID, initial: true) { _, folderID in
@@ -169,10 +169,12 @@ struct HomeView: View {
         }
     }
 
-    /// 다른 멤버가 나에게 보낸 질문을 알림으로 띄움.
-    /// 앱을 보고 있으면 가운데 카드, 백그라운드면 앱 밖 알림. 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
+    /// 다른 멤버가 보낸 채팅·질문을 알림으로 띄움. 지금 그 폴더 채팅을 보고 있으면 띄우지 않습니다.
+    /// - 앱을 보고 있을 때: 나에게 온 질문만 가운데 카드로
+    /// - 백그라운드일 때: 채팅과 나에게 온 질문을 앱 밖 알림으로 ([폴더] 닉네임 / 내용)
+    /// 질문은 받을 사람으로 고른 멤버에게만 알립니다.
     /// (앱이 완전히 꺼져 있을 때는 서버 푸시가 있어야 해서 아직 안 옴)
-    private func listenForQuestions() async {
+    private func listenForMessages() async {
         #if DEBUG
         // 실행 인자 -demoQuestionAlert 로 알림 모양 확인
         if ProcessInfo.processInfo.arguments.contains("-demoQuestionAlert") {
@@ -196,23 +198,21 @@ struct HomeView: View {
         }
 
         for await message in subscription.messages {
-            // 수달로 보낸 질문 중 나를 받을 사람으로 고른 것만. 보통 채팅(받을 사람 없음)은 알림 없음
-            guard message.isQuestion,
-                  message.userID != userID,
-                  message.recipientIDs.contains(userID),
-                  !isViewingChat(of: message.folderID)
-            else { continue }
-            guard let alert = await makeAlert(for: message), !isViewingChat(of: message.folderID) else { continue }
+            guard message.userID != userID, !isViewingChat(of: message.folderID) else { continue }
+            // 다른 멤버에게 보낸 질문은 알리지 않음
+            if message.isQuestion, !message.recipientIDs.contains(userID) { continue }
+
             if UIApplication.shared.applicationState == .active {
+                // 앱 안에서는 질문만 카드로 (보통 채팅은 채팅방에서 확인)
+                guard message.isQuestion,
+                      let alert = await makeAlert(for: message),
+                      !isViewingChat(of: message.folderID)
+                else { continue }
                 questionAlerts.present(alert)
             } else {
-                // 앱을 보고 있지 않으면 앱 밖 알림으로 ([폴더] 닉네임 / 질문)
-                await LocalNotifications.presentQuestion(
-                    id: message.id,
-                    folder: alert.folder,
-                    askerNickname: alert.askerNickname,
-                    question: alert.question
-                )
+                guard let folder = await folder(id: message.folderID) else { continue }
+                let nickname = await nickname(of: message.userID, in: folder.id)
+                await LocalNotifications.presentMessage(message, folder: folder, senderNickname: nickname)
             }
         }
         await subscription.close()
@@ -236,7 +236,7 @@ struct HomeView: View {
         do {
             try await LocalNotifications.scheduleTest(
                 folder: folders?.first,
-                askerNickname: profile?.nickname ?? "샬픽 사용자"
+                senderNickname: profile?.nickname ?? "샬픽 사용자"
             )
             notificationNotice = "5초 뒤에 테스트 알림이 와요. 홈 화면으로 나가서 확인해 보세요."
         } catch {
@@ -249,23 +249,28 @@ struct HomeView: View {
         return false
     }
 
-    private func makeAlert(for message: ChatMessage) async -> QuestionAlert? {
-        var folder = folders?.first { $0.id == message.folderID }
-        if folder == nil {
-            // 방금 참여한 폴더일 수 있음
-            await reloadFolders()
-            folder = folders?.first { $0.id == message.folderID }
-        }
-        guard let folder else { return nil }
+    private func folder(id folderID: UUID) async -> Folder? {
+        if let folder = folders?.first(where: { $0.id == folderID }) { return folder }
+        // 방금 참여한 폴더일 수 있음
+        await reloadFolders()
+        return folders?.first { $0.id == folderID }
+    }
 
-        async let members = try? ChatRepository.fetchMembers(folderID: folder.id)
+    private func nickname(of memberID: UUID, in folderID: UUID) async -> String {
+        let members = try? await ChatRepository.fetchMembers(folderID: folderID)
+        return members?.first { $0.userID == memberID }?.nickname ?? "샬픽 사용자"
+    }
+
+    private func makeAlert(for message: ChatMessage) async -> QuestionAlert? {
+        guard let folder = await folder(id: message.folderID) else { return nil }
+
+        async let nickname = nickname(of: message.userID, in: folder.id)
         async let photos = try? PhotoRepository.fetch(folderID: folder.id)
-        let nickname = await members?.first { $0.userID == message.userID }?.nickname ?? "샬픽 사용자"
         // 질문에 붙은 사진이 있으면 그 사진, 없으면 폴더 최신 사진
         let folderPhotos = await photos ?? []
         let byID = Dictionary(folderPhotos.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let attached = message.photoIDs.compactMap { byID[$0] }
-        return QuestionAlert(
+        return await QuestionAlert(
             id: message.id,
             folder: folder,
             askerNickname: nickname,

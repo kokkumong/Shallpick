@@ -63,50 +63,65 @@ enum LocalNotifications {
         }
     }
 
-    /// 테스트 알림: seconds 초 뒤에 질문 알림 모양으로 뜸 (그 사이 홈 화면으로 나가면 앱 밖 알림으로 보임)
-    static func scheduleTest(folder: Folder?, askerNickname: String, after seconds: TimeInterval = 5) async throws {
-        let content = await questionContent(
+    /// 테스트 알림: seconds 초 뒤에 채팅 알림 모양으로 뜸 (그 사이 홈 화면으로 나가면 앱 밖 알림으로 보임)
+    static func scheduleTest(folder: Folder?, senderNickname: String, after seconds: TimeInterval = 5) async throws {
+        let content = await messageContent(
             folderID: folder?.id,
             folderName: folder?.name ?? "Shallpick",
-            askerNickname: askerNickname,
-            question: "test"
+            senderNickname: senderNickname,
+            body: "test"
         )
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
         let request = UNNotificationRequest(identifier: "test-\(UUID().uuidString)", content: content, trigger: trigger)
         try await UNUserNotificationCenter.current().add(request)
     }
 
-    /// 질문이 왔을 때 바로 띄우는 앱 밖 알림
-    static func presentQuestion(id: UUID, folder: Folder, askerNickname: String, question: String) async {
-        let content = await questionContent(
+    /// 새 채팅·질문이 왔을 때 바로 띄우는 앱 밖 알림
+    static func presentMessage(_ message: ChatMessage, folder: Folder, senderNickname: String) async {
+        let content = await messageContent(
             folderID: folder.id,
             folderName: folder.name,
-            askerNickname: askerNickname,
-            question: question
+            senderNickname: senderNickname,
+            body: body(for: message, senderNickname: senderNickname)
         )
-        let request = UNNotificationRequest(identifier: "question-\(id.uuidString)", content: content, trigger: nil)
+        let request = UNNotificationRequest(identifier: "message-\(message.id.uuidString)", content: content, trigger: nil)
         do {
             try await UNUserNotificationCenter.current().add(request)
         } catch {
-            print("[Push] 질문 알림을 띄우지 못함:", error)
+            print("[Push] 채팅 알림을 띄우지 못함:", error)
         }
     }
 
-    /// 질문 알림 내용
-    /// 첫 줄: [폴더 이름] 질문자 닉네임 (굵게) / 둘째 줄: 질문
+    /// 알림 둘째 줄
+    /// - 사진을 골라 보낸 질문: 안내 문구
+    /// - 그 밖의 채팅·질문: 보낸 글 그대로 (글 없이 사진만 보냈으면 사진 장수)
+    static func body(for message: ChatMessage, senderNickname: String) -> String {
+        let photoCount = message.photoIDs.count
+        if message.isQuestion, photoCount > 0 {
+            return "\(senderNickname)님이 사진 \(photoCount)장에 대한 질문을 올렸어요! 확인해주세요:)"
+        }
+        let text = message.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty, photoCount > 0 {
+            return "사진 \(photoCount)장을 보냈어요"
+        }
+        return text
+    }
+
+    /// 채팅·질문 알림 내용
+    /// 첫 줄: [폴더 이름] 보낸 사람 닉네임 (굵게) / 둘째 줄: body
     /// 메시지형으로 바꿔서 왼쪽 큰 동그라미에 수달, 귀퉁이에 작은 앱 아이콘을 보여 줌.
     /// 보낸 사람 이름을 "[폴더] 닉네임" 으로 한 1:1 대화로 만듭니다. (단체방으로 만들면 iOS 가
     /// 보낸 사람 / 방 이름 / 내용 세 줄로 보여 줌)
     /// Communication Notifications 권한이 없으면(실제 기기 + 무료 계정 등) 일반 알림 모양으로 보냅니다.
-    static func questionContent(
+    static func messageContent(
         folderID: UUID?,
         folderName: String,
-        askerNickname: String,
-        question: String
+        senderNickname: String,
+        body: String
     ) async -> UNNotificationContent {
         let content = UNMutableNotificationContent()
-        content.title = "[\(folderName)] \(askerNickname)"
-        content.body = question
+        content.title = "[\(folderName)] \(senderNickname)"
+        content.body = body
         content.sound = .default
         if let folderID {
             content.userInfo = [PushPayloadKey.folderID: folderID.uuidString]
@@ -115,7 +130,7 @@ enum LocalNotifications {
 
         let avatar = UIImage(resource: .notificationAvatar).pngData().map(INImage.init(imageData:))
         let folderKey = folderID?.uuidString ?? "test"
-        let senderKey = "\(folderKey):\(askerNickname)"
+        let senderKey = "\(folderKey):\(senderNickname)"
         // 메시지형에서는 보낸 사람 이름이 첫 줄(굵게)에 나옴
         let sender = INPerson(
             personHandle: INPersonHandle(value: senderKey, type: .unknown),
