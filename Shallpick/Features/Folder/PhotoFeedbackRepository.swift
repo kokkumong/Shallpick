@@ -36,7 +36,7 @@ nonisolated struct PhotoComment: Codable, Sendable, Identifiable, Hashable {
 /// supabase/migrations 의 public.photo_reactions, public.photo_comments
 enum PhotoFeedbackRepository {
     static let maxCommentLength = 1000
-    /// 사진을 두 번 누르면 남는 반응
+    /// 사진을 두 번 누르면 켜지고 꺼지는 반응
     static let heart = "❤️"
     /// 이모지 추가 버튼에서 고를 수 있는 반응
     static let palette = ["❤️", "😆", "🤨", "😢", "👍", "🔥", "😍", "😮"]

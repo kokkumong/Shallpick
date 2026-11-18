@@ -87,7 +87,7 @@ struct PhotoDetailView: View {
                         members: members,
                         myUserID: myUserID,
                         scrollToCommentID: lastSentCommentID,
-                        onDoubleTap: { addHeart(to: photo) },
+                        onDoubleTap: { toggleReaction(PhotoFeedbackRepository.heart, on: photo) },
                         onToggleReaction: { emoji in toggleReaction(emoji, on: photo) },
                         onDeleteComment: { comment in deleteComment(comment) }
                     )
@@ -207,15 +207,7 @@ struct PhotoDetailView: View {
 
     // MARK: - 반응
 
-    /// 사진을 빠르게 두 번 누르면 하트 (이미 남겼으면 그대로)
-    private func addHeart(to photo: PhotoItem) {
-        let heart = PhotoFeedbackRepository.heart
-        guard let me = myUserID else { return }
-        if feedback[photo.id]?.reactions.contains(where: { $0.userID == me && $0.emoji == heart }) == true { return }
-        setReaction(heart, on: photo, isOn: true)
-    }
-
-    /// 반응 칩 / 이모지 고르기: 내가 남겼으면 지우고, 아니면 남김
+    /// 반응 칩 / 이모지 고르기 / 사진 두 번 누르기(하트): 내가 남겼으면 지우고, 아니면 남김
     private func toggleReaction(_ emoji: String, on photo: PhotoItem) {
         guard let me = myUserID else { return }
         let isMine = feedback[photo.id]?.reactions.contains { $0.userID == me && $0.emoji == emoji } == true
@@ -345,6 +337,7 @@ private struct PhotoDetailPage: View {
     let members: [UUID: ChatMember]
     let myUserID: UUID?
     let scrollToCommentID: UUID?
+    /// 하트 켜고 끄기
     let onDoubleTap: () -> Void
     let onToggleReaction: (String) -> Void
     let onDeleteComment: (PhotoComment) -> Void
@@ -404,13 +397,25 @@ private struct PhotoDetailPage: View {
             }
             .contentShape(Rectangle())
             .onTapGesture(count: 2) {
+                // 하트를 남길 때만 가운데에 크게 띄우고, 지울 때는 바로 숨김
+                let wasHearted = isHearted
                 onDoubleTap()
-                showHeart()
+                if wasHearted { hideHeart() } else { showHeart() }
             }
             .sensoryFeedback(.impact(weight: .light), trigger: heartBurst)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("사진")
-            .accessibilityAction(named: "하트 남기기") { onDoubleTap() }
+            .accessibilityAction(named: isHearted ? "하트 지우기" : "하트 남기기") { onDoubleTap() }
+    }
+
+    private var isHearted: Bool {
+        guard let myUserID else { return false }
+        return feedback.reactions.contains { $0.userID == myUserID && $0.emoji == PhotoFeedbackRepository.heart }
+    }
+
+    private func hideHeart() {
+        heartBurst += 1
+        withAnimation(.easeOut(duration: 0.15)) { isShowingHeart = false }
     }
 
     private func showHeart() {
