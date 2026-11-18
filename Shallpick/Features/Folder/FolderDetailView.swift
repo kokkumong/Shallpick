@@ -302,8 +302,7 @@ struct FolderDetailView: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 36)
-            .background(.white, in: Capsule())
-            .shallpickShadow(blur: 20)
+            .shadowedBackground(.white, in: Capsule(), blur: 20)
             .padding(.top, 74)
             .transition(.move(edge: .top).combined(with: .opacity))
         }
@@ -589,18 +588,13 @@ private struct PhotoGrid: View {
                 }
             }
             .contentShape(Rectangle())
-            .gesture(
-                LongPressGesture(minimumDuration: 0.4)
-                    .exclusively(before: TapGesture())
-                    .onEnded { gesture in
-                        switch gesture {
-                        case .first:
-                            if !isSelecting { onLongPress(photo) }
-                        case .second:
-                            if isSelecting { onToggle(photo) } else { onOpen(photo) }
-                        }
-                    }
-            )
+            // 꾹 누르기를 탭보다 먼저 달아야 0.4초에 바로 켜짐 (탭 뒤에 달면 약 0.65초로 늦어짐)
+            .onLongPressGesture(minimumDuration: 0.4) {
+                if !isSelecting { onLongPress(photo) }
+            }
+            .onTapGesture {
+                if isSelecting { onToggle(photo) } else { onOpen(photo) }
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("사진")
             .accessibilityAddTraits(.isButton)
@@ -680,8 +674,7 @@ struct PhotoFilterMenu: View {
         .foregroundStyle(Color.black800)
         .padding(20)
         .frame(width: 198)
-        .background(.white, in: RoundedRectangle(cornerRadius: 16))
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 16), blur: 20)
     }
 
     /// 선택된 항목은 굵게 + 체크 (filter_d_check)

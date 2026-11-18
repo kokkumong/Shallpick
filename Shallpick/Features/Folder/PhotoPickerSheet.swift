@@ -271,8 +271,7 @@ private struct GalleryFilterMenu: View {
         .foregroundStyle(Color.black800)
         .padding(20)
         .frame(width: 198)
-        .background(.white, in: RoundedRectangle(cornerRadius: 16))
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 16), blur: 20)
     }
 }
 

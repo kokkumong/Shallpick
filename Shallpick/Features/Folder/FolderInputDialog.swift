@@ -110,8 +110,7 @@ struct FolderInputDialog: View {
             }
         }
         .padding(20)
-        .background(Color.black50, in: RoundedRectangle(cornerRadius: 36))
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(Color.black50, in: RoundedRectangle(cornerRadius: 36), blur: 20)
         .animation(.snappy(duration: 0.2), value: errorMessage)
     }
 
@@ -136,8 +135,7 @@ struct FolderInputDialog: View {
         }
         .padding(.horizontal, 20)
         .frame(height: 52)
-        .background(.white, in: Capsule())
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(.white, in: Capsule(), blur: 20)
     }
 
     private func submit() {
