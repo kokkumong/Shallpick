@@ -43,7 +43,41 @@ struct QuestionComposeView: View {
         !trimmedQuestion.isEmpty && !recipients.isEmpty && !isSending
     }
 
+    /// 아래 "질문 보내기" 줄 높이 (위 24 + 버튼 48 + 아래 33)
+    private let sendBarHeight: CGFloat = 105
+
     var body: some View {
+        // 키보드가 올라와도 "질문 보내기" 는 아래에 그대로 둠 (키보드에 가려짐).
+        // 입력칸이 화면 위쪽이라 내용도 키보드를 피하지 않아도 가리지 않음
+        ZStack(alignment: .bottom) {
+            content
+            sendBar
+        }
+        .ignoresSafeArea(.keyboard)
+        .background(Color.black50)
+        .alert(
+            "질문을 보내지 못했어요",
+            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+        ) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .overlay {
+            if isShowingViewer {
+                QuestionPhotoViewer(
+                    photos: photos,
+                    onRemove: remove,
+                    onClose: { isShowingViewer = false }
+                )
+                .transition(.opacity)
+            }
+        }
+        .animation(.snappy(duration: 0.25), value: isShowingViewer)
+        .task { await loadMembers() }
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(spacing: 26) {
                 Button {
@@ -68,29 +102,9 @@ struct QuestionComposeView: View {
             .onTapGesture { isQuestionFocused = false }
         }
         .scrollDismissesKeyboard(.interactively)
-        .background(Color.black50)
         .safeAreaInset(edge: .top, spacing: 0) { header }
-        .safeAreaInset(edge: .bottom, spacing: 0) { sendBar }
-        .alert(
-            "질문을 보내지 못했어요",
-            isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
-        ) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "")
-        }
-        .overlay {
-            if isShowingViewer {
-                QuestionPhotoViewer(
-                    photos: photos,
-                    onRemove: remove,
-                    onClose: { isShowingViewer = false }
-                )
-                .transition(.opacity)
-            }
-        }
-        .animation(.snappy(duration: 0.25), value: isShowingViewer)
-        .task { await loadMembers() }
+        // 아래 "질문 보내기" 에 가리지 않게
+        .safeAreaPadding(.bottom, sendBarHeight)
     }
 
     /// 사진 보기의 휴지통: 고른 사진에서 빼고, 다 빠지면 질문도 닫음
@@ -105,17 +119,12 @@ struct QuestionComposeView: View {
         }
     }
 
-    // MARK: - 상단: 닫기 / 질문 보내기 / 확인
+    // MARK: - 상단: 닫기 / 질문 보내기 (보내기는 아래 버튼으로만)
 
     private var header: some View {
         HStack {
             CircleIconButton(icon: .iconClose, accessibilityLabel: "닫기") { dismiss() }
             Spacer()
-            CircleIconButton(icon: .iconCheck, style: .filled, accessibilityLabel: "질문 보내기") {
-                Task { await send() }
-            }
-            .disabled(!canSend)
-            .opacity(canSend ? 1 : 0.4)
         }
         .overlay {
             Text("질문 보내기")
