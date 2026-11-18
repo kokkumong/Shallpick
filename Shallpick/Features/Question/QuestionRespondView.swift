@@ -357,8 +357,7 @@ struct QuestionRespondView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 7.5)
         .frame(minHeight: 45)
-        .background(.white, in: RoundedRectangle(cornerRadius: 22.5))
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 22.5), blur: 20)
         .padding(.horizontal, 24)
         .padding(.bottom, 10)
     }

@@ -50,4 +50,3 @@ nonisolated struct QuestionPin: Codable, Sendable, Identifiable, Hashable {
         case createdAt = "created_at"
     }
 }
-

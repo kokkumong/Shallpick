@@ -106,8 +106,7 @@ extension HomeHeader {
         }
         .padding(.horizontal, 16)
         .frame(height: 45)
-        .background(.white, in: Capsule())
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(.white, in: Capsule(), blur: 20)
         .onAppear { isFieldFocused = true }
     }
 

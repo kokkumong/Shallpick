@@ -813,8 +813,7 @@ private struct ChatInputBar: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 7.5)
             .frame(minHeight: 45)
-            .background(.white, in: RoundedRectangle(cornerRadius: 22.5))
-            .shallpickShadow(blur: 20)
+            .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 22.5), blur: 20)
         }
     }
 
@@ -944,8 +943,7 @@ private struct ChatLoadFailedView: View {
                 .foregroundStyle(Color.black800)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(.white, in: Capsule())
-                .shallpickShadow(blur: 20)
+                .shadowedBackground(.white, in: Capsule(), blur: 20)
         }
     }
 }

@@ -45,8 +45,7 @@ struct FolderInvitePopup: View {
                 .padding(.horizontal, 30)
                 .padding(.vertical, 32)
                 .frame(maxWidth: 300)
-                .background(.white, in: RoundedRectangle(cornerRadius: 24))
-                .shallpickShadow()
+                .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 24))
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
         }
         .accessibilityAddTraits(.isModal)

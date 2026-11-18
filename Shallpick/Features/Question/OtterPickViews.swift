@@ -58,7 +58,7 @@ struct OtterPickCard: View {
     private var otterImage: ImageResource {
         switch state {
         case .analyzing: .otterThinking
-        case .suggest: .otterPoint
+        case .suggest: .otterPresent
         case .nothing, .applied: .otterMascot
         }
     }
@@ -210,7 +210,7 @@ struct OtterPickSheet: View {
     /// 수달 + 말풍선
     private var intro: some View {
         HStack(alignment: .bottom, spacing: 4) {
-            Image(.otterPoint)
+            Image(.otterPresent)
                 .resizable()
                 .scaledToFill()
                 .frame(width: 72, height: 75)
@@ -377,8 +377,7 @@ private struct PickPhotoTile: View {
             .lineLimit(1)
             .padding(.horizontal, 10)
             .frame(height: 24)
-            .background(isBest ? Color.black800 : .white.opacity(0.92), in: Capsule())
-            .shallpickShadow(blur: 8)
+            .shadowedBackground(isBest ? Color.black800 : .white.opacity(0.92), in: Capsule(), blur: 8)
     }
 }
 

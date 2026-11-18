@@ -174,14 +174,18 @@ struct QuestionPinBubble<Content: View>: View {
             content
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(Color.black50, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(alignment: .bottom) {
-                    BubbleTail()
+                // 그림자는 말풍선 모양에만 (글자에 번지지 않게)
+                .background {
+                    RoundedRectangle(cornerRadius: 16)
                         .fill(Color.black50)
-                        .frame(width: 8, height: 10)
-                        .offset(x: tailOffset, y: 9.5)
+                        .overlay(alignment: .bottom) {
+                            BubbleTail()
+                                .fill(Color.black50)
+                                .frame(width: 8, height: 10)
+                                .offset(x: tailOffset, y: 9.5)
+                        }
+                        .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                 }
-                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
         }
         .frame(width: half * 2, height: maxHeight)
         .position(x: centerX, y: point.y - 18 - maxHeight / 2)
