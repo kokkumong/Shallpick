@@ -355,6 +355,14 @@ private struct PhotoDetailPage: View {
     /// 머리와 입력창 사이에 보이는 높이, 사진 높이 (사진을 가운데 두려고 잼)
     @State private var visibleHeight: CGFloat = 0
     @State private var photoHeight: CGFloat = 0
+    /// 사진이 가운데에서 얼마나 올라갔는지 (위로 민 거리)
+    @State private var scrolledUp: CGFloat = 0
+
+    /// 0 = 사진이 가운데 (댓글은 흐리게), 1 = 사진이 맨 위로 올라감 (댓글 또렷하게)
+    private var commentReveal: CGFloat {
+        guard topSpace > 0 else { return 1 }
+        return min(max(scrolledUp / topSpace, 0), 1)
+    }
 
     /// 사진은 늘 보이는 칸 가운데에서 시작
     private var topSpace: CGFloat {
@@ -395,6 +403,10 @@ private struct PhotoDetailPage: View {
                         )
                         .padding(.horizontal, 24)
                         .padding(.top, 14)
+                        // 사진이 가운데 있을 땐 아래로 갈수록 흐려지고 살짝 번져서 사진에 눈이 가게,
+                        // 위로 밀수록 또렷해짐
+                        .blur(radius: (1 - commentReveal) * 2.5)
+                        .mask { CommentRevealMask(reveal: commentReveal) }
                     }
                     .frame(minHeight: belowPhotoMinHeight, alignment: .top)
                 }
@@ -406,6 +418,9 @@ private struct PhotoDetailPage: View {
             // 머리와 입력창은 안전 영역으로 빠져 있어서 containerSize 가 그 사이 높이
             .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
                 visibleHeight = height
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                scrolledUp = offset
             }
             .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
             .onChange(of: scrollToCommentID) { _, id in
@@ -458,6 +473,23 @@ private struct PhotoDetailPage: View {
             try? await Task.sleep(for: .seconds(0.7))
             guard burst == heartBurst else { return }
             withAnimation(.easeOut(duration: 0.25)) { isShowingHeart = false }
+        }
+    }
+}
+
+/// 댓글 목록에 씌우는 가림막. reveal 0 이면 위는 반쯤 보이고 아래로 갈수록 사라지며, 1 이면 전부 보임
+private struct CommentRevealMask: View {
+    let reveal: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [.black.opacity(0.55 + 0.45 * reveal), .black.opacity(reveal)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 140)
+            Color.black.opacity(reveal)
         }
     }
 }
