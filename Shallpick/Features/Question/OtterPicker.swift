@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import Vision
+import UIKit
 
 /// 질문 보내기 전에 수달이 사진을 추려 주기.
 /// 사진은 기기 안에서만 살펴봅니다 (Apple Vision, 서버로 보내지 않음).
@@ -42,10 +43,14 @@ nonisolated enum OtterPicker {
 
     @concurrent
     private static func signal(for photo: PhotoItem) async -> PhotoSignal {
-        guard let url = photo.url,
-              let (data, _) = try? await URLSession.shared.data(from: url),
-              let image = thumbnail(of: data)
-        else { return PhotoSignal() }
+        guard let url = photo.url else { return PhotoSignal() }
+        let data: Data?
+        if url.scheme == "demo-asset" {
+            data = await MainActor.run { UIImage(named: url.lastPathComponent)?.jpegData(compressionQuality: 1) }
+        } else {
+            data = try? await URLSession.shared.data(from: url).0
+        }
+        guard let data, let image = thumbnail(of: data) else { return PhotoSignal() }
 
         var signal = PhotoSignal()
         signal.hash = differenceHash(image)

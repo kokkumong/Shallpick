@@ -17,6 +17,9 @@ struct ShallpickApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .transformEnvironment(\.accessibilityReduceMotion) { value in
+                    if DemoStore.isAvailable && ProcessInfo.processInfo.arguments.contains("-reviewReduceMotion") { value = true }
+                }
                 .onOpenURL { url in
                     // 카카오톡 앱에서 로그인 후 돌아올 때
                     if !DemoStore.isAvailable, AuthApi.isKakaoTalkLoginUrl(url) {

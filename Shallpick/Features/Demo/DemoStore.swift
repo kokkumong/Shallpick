@@ -26,6 +26,7 @@ final class DemoStore {
     var photoReactions: [PhotoReaction] = []
     var photoComments: [PhotoComment] = []
     var messageChecks: [MessageCheck] = []
+    var nickname = "시연 사용자"
 
     private init() { reset() }
 
@@ -54,6 +55,7 @@ final class DemoStore {
             Folder(id: UUID(), name: "다음 여행", ownerID: friendID, inviteCode: "TRAVEL", memberNames: ["나", "하늘"])
         ]
         for (index, folder) in folders.enumerated() {
+            NotificationReadState(userID: userID).markRead(folderID: folder.id, at: .now.addingTimeInterval(-1000))
             photoLists[folder.id] = (0..<8).map { makePhoto(folderID: folder.id, index: $0 + index * 2) }
             conversations[folder.id] = [
                 ChatMessage(id: UUID(), folderID: folder.id, userID: friendID,

@@ -85,6 +85,12 @@ nonisolated struct ChatMember: Decodable, Sendable, Hashable {
 enum ChatRepository {
     /// 보통 메시지와 나에게 온 요청만 셉니다. 페이지 크기와 무관한 서버의 전체 개수입니다.
     static func unreadCount(folderID: UUID, userID: UUID, since: Date) async throws -> Int {
+        if DemoStore.shared.isActive {
+            return DemoStore.shared.messages(in: folderID).count {
+                $0.userID != userID && $0.createdAt > since
+                    && (!$0.isQuestion || $0.recipientIDs.contains(userID))
+            }
+        }
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return try await client

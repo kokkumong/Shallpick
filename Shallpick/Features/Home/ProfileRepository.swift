@@ -20,6 +20,10 @@ enum ProfileRepository {
 
     /// 본인 닉네임 바꾸기 (RLS "본인 프로필 수정")
     static func updateNickname(_ nickname: String, userID: UUID) async throws -> Profile {
+        if DemoStore.shared.isActive {
+            DemoStore.shared.nickname = nickname
+            return Profile(id: userID, nickname: nickname, avatarURL: nil)
+        }
         guard let client = SupabaseManager.client else { throw FolderRepository.FolderError.notConfigured }
         return try await client
             .from("profiles")
@@ -32,7 +36,7 @@ enum ProfileRepository {
     }
 
     static func fetch(userID: UUID) async throws -> Profile? {
-        if DemoStore.shared.isActive { return Profile(id: userID, nickname: "시연 사용자", avatarURL: nil) }
+        if DemoStore.shared.isActive { return Profile(id: userID, nickname: DemoStore.shared.nickname, avatarURL: nil) }
         guard let client = SupabaseManager.client else { return nil }
         return try await client
             .from("profiles")

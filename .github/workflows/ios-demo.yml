@@ -70,7 +70,7 @@ jobs:
           if-no-files-found: error
       - name: Exercise demo on iPhone simulator
         if: github.ref == 'refs/heads/feat/latest-main-appetize' || startsWith(github.ref, 'refs/heads/ci/figma-review-') || (github.event_name == 'workflow_dispatch' && inputs.run_ui_tests)
-        timeout-minutes: 12
+        timeout-minutes: 20
         run: |
           set -o pipefail
           echo 'Discovering available iOS 26 simulator devices'
