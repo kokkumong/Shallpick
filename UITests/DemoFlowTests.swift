@@ -35,7 +35,7 @@ final class DemoFlowTests: XCTestCase {
 
         // Long press opens the existing, position-specific comment interaction.
         photo.press(forDuration: 0.7)
-        let field = app.textViews.firstMatch
+        let field = app.textFields["이 자리에 남길 댓글을 입력하세요"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
         field.tap()
         field.typeText("Please crop this part")
@@ -48,5 +48,19 @@ final class DemoFlowTests: XCTestCase {
         review.tap()
         XCTAssertTrue(pin.waitForExistence(timeout: 5), "Pinned comment should survive leaving and reopening the question")
         capture(app, "07-persisted-comment")
+
+        photo.swipeDown()
+        let previous = app.buttons["이전 사진"]
+        XCTAssertTrue(previous.isEnabled, "Voting should move to the next unanswered photo")
+        previous.tap()
+        let vote = app.descendants(matching: .any).matching(identifier: "내가 남긴 의견: 좋아").firstMatch
+        XCTAssertTrue(vote.waitForExistence(timeout: 5))
+        capture(app, "08-photo-vote")
+        app.buttons["완료"].tap()
+        review.tap()
+        previous.tap()
+        XCTAssertTrue(vote.waitForExistence(timeout: 5), "Vote should survive reopening the question")
+        XCTAssertTrue(pin.exists)
+        capture(app, "09-persisted-vote-and-comment")
     }
 }

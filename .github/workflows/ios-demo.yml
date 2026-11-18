@@ -18,11 +18,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: ios-demo-${{ github.head_ref || github.ref_name }}
+  group: ios-demo-${{ github.head_ref || github.ref_name }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
   simulator:
+    # This demo branch is already checked by push; avoid a second identical PR build.
+    if: github.event_name != 'pull_request' || github.head_ref != 'feat/latest-main-appetize'
     runs-on: macos-15
     timeout-minutes: 40
     steps:
