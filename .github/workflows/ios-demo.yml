@@ -2,7 +2,7 @@ name: iOS browser demo
 
 on:
   push:
-    branches: [main, feat/latest-main-appetize]
+    branches: [main, feat/latest-main-appetize, 'ci/figma-review-*']
     paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
   pull_request:
     branches: [main]
@@ -69,7 +69,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
       - name: Exercise demo on iPhone simulator
-        if: github.ref == 'refs/heads/feat/latest-main-appetize' || (github.event_name == 'workflow_dispatch' && inputs.run_ui_tests)
+        if: github.ref == 'refs/heads/feat/latest-main-appetize' || startsWith(github.ref, 'refs/heads/ci/figma-review-') || (github.event_name == 'workflow_dispatch' && inputs.run_ui_tests)
         timeout-minutes: 12
         run: |
           set -o pipefail
@@ -78,6 +78,9 @@ jobs:
           echo "Booting simulator $DEVICE"
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl io "$DEVICE" recordVideo --codec=h264 build/demo-flow.mov &
+          VIDEO_PID=$!
+          trap 'kill -INT "$VIDEO_PID" 2>/dev/null || true; wait "$VIDEO_PID" || true' EXIT
           xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
             -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" \
             -derivedDataPath build/demo -resultBundlePath build/DemoTests.xcresult \
@@ -97,6 +100,7 @@ jobs:
           name: iOS-demo-verification-${{ github.sha }}
           path: |
             build/*.log
+            build/demo-flow.mov
             build/screenshots/
           retention-days: 14
           if-no-files-found: warn

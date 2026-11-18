@@ -20,6 +20,9 @@ final class DemoFlowTests: XCTestCase {
         let folder = app.buttons["주말 나들이"]
         XCTAssertTrue(folder.waitForExistence(timeout: 15), app.debugDescription)
         capture(app, "02-latest-home")
+        app.buttons["내 계정"].tap()
+        capture(app, "02b-account")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).tap()
         folder.tap()
         XCTAssertTrue(app.buttons["채팅"].waitForExistence(timeout: 10))
         capture(app, "03-latest-folder")
