@@ -83,6 +83,21 @@ nonisolated struct ChatMember: Decodable, Sendable, Hashable {
 
 /// supabase/migrations 의 public.messages, folder_member_profiles RPC
 enum ChatRepository {
+    /// 보통 메시지와 나에게 온 요청만 셉니다. 페이지 크기와 무관한 서버의 전체 개수입니다.
+    static func unreadCount(folderID: UUID, userID: UUID, since: Date) async throws -> Int {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return try await client
+            .from("messages")
+            .select("id", head: true, count: .exact)
+            .eq("folder_id", value: folderID)
+            .neq("user_id", value: userID)
+            .gt("created_at", value: formatter.string(from: since))
+            .or("recipient_ids.eq.{},recipient_ids.cs.{\(userID.uuidString)}")
+            .execute()
+            .count ?? 0
+    }
+
     static let maxBodyLength = 1000
     /// 채팅방을 열 때 불러오는 최근 메시지 수
     static let historyLimit = 200

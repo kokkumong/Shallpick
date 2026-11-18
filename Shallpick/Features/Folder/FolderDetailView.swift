@@ -6,6 +6,7 @@ import SwiftUI
 struct FolderDetailView: View {
     let folder: Folder
     var avatarURL: URL?
+    var unreadCount = 0
     var onSearch: () -> Void = {}
     /// 수달 → "질문에 첨부할 사진 선택" 에서 → 를 누르면 불립니다 (고른 순서대로).
     /// 주면 밖에서 채팅을 열고, 없으면 이 화면에서 고른 사진을 붙여 채팅을 엽니다.
@@ -14,6 +15,7 @@ struct FolderDetailView: View {
     var onOpenChat: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var photoNamespace
     @State private var photos: [PhotoItem]
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
@@ -52,6 +54,7 @@ struct FolderDetailView: View {
     init(
         folder: Folder,
         avatarURL: URL? = nil,
+        unreadCount: Int = 0,
         photos: [PhotoItem] = [],
         onSearch: @escaping () -> Void = {},
         onAskQuestion: (([PhotoItem]) -> Void)? = nil,
@@ -59,6 +62,7 @@ struct FolderDetailView: View {
     ) {
         self.folder = folder
         self.avatarURL = avatarURL
+        self.unreadCount = unreadCount
         self.onSearch = onSearch
         self.onAskQuestion = onAskQuestion
         self.onOpenChat = onOpenChat
@@ -103,6 +107,7 @@ struct FolderDetailView: View {
                     startID: photo.id,
                     avatarURL: avatarURL
                 )
+                .modifier(PhotoZoomTransition(photoID: photo.id, namespace: photoNamespace))
             }
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
@@ -169,6 +174,7 @@ struct FolderDetailView: View {
         } else {
             PhotoGrid(
                 photos: photos.filtered(by: filters),
+                namespace: photoNamespace,
                 selection: selection,
                 onLongPress: { photo in
                     isShowingFilterMenu = false
@@ -356,6 +362,21 @@ struct FolderDetailView: View {
                             isShowingChat = true
                         }
                     }
+                    .overlay(alignment: .topTrailing) {
+                        if unreadCount > 0 {
+                            Text(unreadCount > 99 ? "99+" : "\(unreadCount)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .monospacedDigit()
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 19, minHeight: 19)
+                                .background(Color.red, in: Capsule())
+                                .offset(x: 4, y: -4)
+                                .allowsHitTesting(false)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .accessibilityValue(unreadCount > 0 ? "읽지 않은 글 \(unreadCount)개" : "읽지 않은 글 없음")
                 }
                 .transition(.opacity)
             }
@@ -485,9 +506,10 @@ extension [PhotoItem] {
 
 // MARK: - 사진 그리드
 
-/// 4열 정사각형, 간격 10 (246:5209)
+/// 기본 4열. 두 손가락 확대/축소로 2~6열 사이에서 사진 크기를 바꿉니다.
 private struct PhotoGrid: View {
     let photos: [PhotoItem]
+    let namespace: Namespace.ID
     /// nil 이면 보통 모드
     var selection: Set<UUID>?
     var onLongPress: (PhotoItem) -> Void = { _ in }
@@ -495,20 +517,57 @@ private struct PhotoGrid: View {
     /// 보통 모드에서 사진을 누르면 크게 보기
     var onOpen: (PhotoItem) -> Void = { _ in }
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SceneStorage("folder.photoGrid.columns") private var columnCount = 4
+    @State private var visiblePhotoID: UUID?
+    @GestureState private var magnification: CGFloat = 1
+
+    // 손을 뗄 때만 기준 열 수를 저장합니다. 조절 중 레이아웃이 바뀌어도
+    // 같은 핀치의 시작 기준이 달라지지 않게 합니다.
+    private var displayedColumns: Int {
+        min(max(Int((CGFloat(columnCount) / max(magnification, 0.1)).rounded()), 2), 6)
+    }
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 10), count: displayedColumns)
+    }
 
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(photos) { photo in
                     cell(photo)
+                        .id(photo.id)
                 }
             }
+            .scrollTargetLayout()
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: displayedColumns)
         }
         .scrollIndicators(.hidden)
+        .scrollPosition(id: $visiblePhotoID, anchor: .top)
+        .simultaneousGesture(
+            MagnifyGesture()
+                .updating($magnification) { value, scale, _ in scale = value.magnification }
+                .onEnded { value in
+                    setColumns(Int((CGFloat(columnCount) / max(value.magnification, 0.1)).rounded()))
+                }
+        )
+        .sensoryFeedback(.selection, trigger: displayedColumns)
+        .accessibilityIdentifier("folder.photoGrid")
+        .accessibilityValue("\(displayedColumns)열")
+        .accessibilityHint("두 손가락으로 확대하거나 축소해 사진 크기를 바꿀 수 있어요")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: setColumns(columnCount - 1)
+            case .decrement: setColumns(columnCount + 1)
+            @unknown default: break
+            }
+        }
     }
+
+    private func setColumns(_ count: Int) { columnCount = min(max(count, 2), 6) }
 
     /// 보통: 꾹 누르면 선택 모드. 선택 모드: 누를 때마다 체크 (왼쪽 위 동그라미, 237:26720)
     /// 모드가 바뀌어도 같은 칸을 유지해야 사진을 다시 받지 않음 (체크·테두리만 얹음)
@@ -516,6 +575,7 @@ private struct PhotoGrid: View {
         let isSelecting = selection != nil
         let isSelected = selection?.contains(photo.id) == true
         return FolderPhotoCell(photo: photo)
+            .matchedTransitionSource(id: photo.id, in: namespace)
             .overlay {
                 if isSelected {
                     Rectangle().strokeBorder(Color.black800, lineWidth: 4)
