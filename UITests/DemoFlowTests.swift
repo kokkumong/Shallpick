@@ -8,6 +8,11 @@ final class DemoFlowTests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.7)
     }
 
+    private func tap(_ point: XCUICoordinate) {
+        point.tap()
+        Thread.sleep(forTimeInterval: 0.7)
+    }
+
     private func capture(_ app: XCUIApplication, _ name: String) {
         Thread.sleep(forTimeInterval: 0.7)
         // Dismiss the simulator keyboard's first-run tutorial, not application content.
