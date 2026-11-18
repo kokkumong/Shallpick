@@ -18,6 +18,8 @@ final class ChatStore {
     /// 내가 보낸 메시지 중 아직 서버에 저장되지 않았거나 실패한 것
     private(set) var deliveryStates: [UUID: DeliveryState] = [:]
     private(set) var members: [UUID: ChatMember] = [:]
+    /// 사진 질문 id → 확인한 멤버 (확인한 순서)
+    private(set) var checks: [UUID: [UUID]] = [:]
     /// 폴더 사진 (최신 순). 첨부 사진을 보여 주고, 채팅방에서 질문에 붙일 사진을 고를 때 씀
     private(set) var folderPhotos: [PhotoItem] = []
     private var photosByID: [UUID: PhotoItem] = [:]
@@ -41,7 +43,7 @@ final class ChatStore {
         // 구독을 먼저 열고 기록을 불러와야 그 사이에 온 메시지를 놓치지 않습니다. (중복은 id 로 합침)
         let subscription: ChatRepository.Subscription
         do {
-            subscription = try await ChatRepository.subscribe(folderID: folder.id)
+            subscription = try await ChatRepository.subscribe(folderID: folder.id, includeChecks: true)
         } catch {
             handleLoadError(error)
             return
@@ -52,14 +54,20 @@ final class ChatStore {
             async let loadedMembers = ChatRepository.fetchMembers(folderID: folder.id)
             // 사진을 못 불러와도 대화는 보여 줌 (첨부 자리는 빈 카드)
             async let loadedPhotos = try? PhotoRepository.fetch(folderID: folder.id)
+            // 확인 기록을 못 불러와도 대화는 보여 줌
+            async let loadedChecks = try? ChatRepository.fetchChecks(folderID: folder.id)
             setMembers(try await loadedMembers)
             if let photos = await loadedPhotos { setPhotos(photos) }
+            for check in await loadedChecks ?? [] { addCheck(check) }
             for message in try await history { merge(message, confirmed: true) }
             isLoading = false
         } catch {
             handleLoadError(error)
         }
 
+        let checksTask = Task {
+            for await check in subscription.checks { addCheck(check) }
+        }
         for await message in subscription.messages {
             merge(message, confirmed: true)
             if members[message.userID] == nil,
@@ -72,6 +80,7 @@ final class ChatStore {
                 await reloadPhotos()
             }
         }
+        checksTask.cancel()
         await subscription.close()
     }
 
@@ -118,6 +127,34 @@ final class ChatStore {
         message.userID == myUserID
     }
 
+    /// 사진이 붙은 메시지(질문)에는 말풍선 아래에 확인 블럭이 붙음
+    func isPhotoQuestion(_ message: ChatMessage) -> Bool {
+        !message.photoIDs.isEmpty
+    }
+
+    /// 이 질문을 확인한 멤버 (보낸 사람 빼고, 확인한 순서)
+    func checkers(of message: ChatMessage) -> [ChatMember] {
+        (checks[message.id] ?? [])
+            .filter { $0 != message.userID }
+            .map { members[$0] ?? ChatMember(userID: $0, nickname: "샬픽 사용자", avatarURL: nil) }
+    }
+
+    /// 다른 사람의 질문에서 "확인하러가기"를 누르면 확인했다고 남김 (한 번만)
+    func markChecked(_ message: ChatMessage) {
+        guard let myUserID, !isMine(message), !(checks[message.id] ?? []).contains(myUserID) else { return }
+        // 저장된 값이 Realtime 으로 다시 와도 addCheck 가 중복을 거름
+        addCheck(MessageCheck(messageID: message.id, userID: myUserID, checkedAt: .now))
+        guard !isPreview else { return }
+        Task {
+            do {
+                try await ChatRepository.markChecked(messageID: message.id, folderID: folder.id)
+            } catch {
+                print("[Chat] 질문 확인 남기기 실패:", error)
+                checks[message.id]?.removeAll { $0 == myUserID }
+            }
+        }
+    }
+
     // MARK: - Private
 
     private func deliver(_ message: ChatMessage) {
@@ -147,6 +184,11 @@ final class ChatStore {
 
     private func setMembers(_ list: [ChatMember]) {
         members = Dictionary(list.map { ($0.userID, $0) }, uniquingKeysWith: { _, new in new })
+    }
+
+    private func addCheck(_ check: MessageCheck) {
+        guard !(checks[check.messageID] ?? []).contains(check.userID) else { return }
+        checks[check.messageID, default: []].append(check.userID)
     }
 
     private func setPhotos(_ list: [PhotoItem]) {
@@ -200,9 +242,16 @@ extension ChatStore {
             (me, "좋아요", 60 * 60 * 25 + 700, []),
         ]
         for (userID, body, offset, attached) in script {
+            let id = UUID()
+            if !attached.isEmpty, userID == me {
+                // 내 질문: 앞 질문은 두 명, 뒤 질문은 아직 아무도 확인 안 함
+                for other in others.prefix(body == "괜찮아요?" ? 2 : 0) {
+                    addCheck(MessageCheck(messageID: id, userID: other.userID, checkedAt: .now))
+                }
+            }
             merge(
                 ChatMessage(
-                    id: UUID(),
+                    id: id,
                     folderID: folder.id,
                     userID: userID,
                     body: body,

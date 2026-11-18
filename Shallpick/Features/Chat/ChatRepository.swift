@@ -55,6 +55,19 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
     }
 }
 
+/// 사진 질문을 "확인하러가기"로 확인한 기록 (public.message_checks)
+nonisolated struct MessageCheck: Codable, Sendable, Hashable {
+    let messageID: UUID
+    let userID: UUID
+    let checkedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case messageID = "message_id"
+        case userID = "user_id"
+        case checkedAt = "checked_at"
+    }
+}
+
 /// 채팅방에 보일 멤버 이름/사진
 nonisolated struct ChatMember: Decodable, Sendable, Hashable {
     let userID: UUID
@@ -151,15 +164,45 @@ enum ChatRepository {
             .value
     }
 
+    /// 이 폴더 질문들의 확인 기록 (확인한 순서)
+    static func fetchChecks(folderID: UUID) async throws -> [MessageCheck] {
+        try await client
+            .from("message_checks")
+            .select("message_id, user_id, checked_at")
+            .eq("folder_id", value: folderID)
+            .order("checked_at", ascending: true)
+            .execute()
+            .value
+    }
+
+    /// 사진 질문을 확인했다고 남김. 이미 남겼으면 그대로 둠
+    static func markChecked(messageID: UUID, folderID: UUID) async throws {
+        struct NewCheck: Encodable {
+            let message_id: UUID
+            let folder_id: UUID
+        }
+        try await client
+            .from("message_checks")
+            .upsert(
+                NewCheck(message_id: messageID, folder_id: folderID),
+                onConflict: "message_id,user_id",
+                ignoreDuplicates: true
+            )
+            .execute()
+    }
+
     struct Subscription {
         /// 이 폴더에 새로 저장된 메시지
         let messages: AsyncStream<ChatMessage>
+        /// 새로 남은 질문 확인 기록 (includeChecks 일 때만)
+        let checks: AsyncStream<MessageCheck>
         /// 다 쓰면(화면을 나가면) 불러서 채널을 정리
         let close: () async -> Void
     }
 
     /// folderID 가 nil 이면 내가 참여한 모든 폴더의 새 메시지 (RLS 로 걸러짐) — 앱 안 질문 알림용
-    static func subscribe(folderID: UUID?) async throws -> Subscription {
+    /// includeChecks: 질문 확인 기록도 받기 (채팅방에서만)
+    static func subscribe(folderID: UUID?, includeChecks: Bool = false) async throws -> Subscription {
         let client = try Self.client
         // SDK 는 같은 이름의 채널을 재사용하므로, 화면을 다시 열거나 다시 시도할 때
         // 이전 구독을 정리하면서 새 구독까지 닫히지 않게 매번 다른 이름을 씁니다.
@@ -171,21 +214,37 @@ enum ChatRepository {
             table: "messages",
             filter: folderID.map { .eq("folder_id", value: $0.uuidString.lowercased()) }
         )
+        let checkInserts = includeChecks ? channel.postgresChange(
+            InsertAction.self,
+            schema: "public",
+            table: "message_checks",
+            filter: folderID.map { .eq("folder_id", value: $0.uuidString.lowercased()) }
+        ) : nil
         try await channel.subscribeWithError()
 
-        let messages = AsyncStream<ChatMessage> { continuation in
+        return Subscription(
+            messages: records(of: inserts, as: ChatMessage.self),
+            checks: checkInserts.map { records(of: $0, as: MessageCheck.self) } ?? AsyncStream { $0.finish() },
+            close: { await client.removeChannel(channel) }
+        )
+    }
+
+    private static func records<Record: Decodable & Sendable>(
+        of inserts: AsyncStream<InsertAction>,
+        as type: Record.Type
+    ) -> AsyncStream<Record> {
+        AsyncStream<Record> { continuation in
             let task = Task {
                 for await action in inserts {
                     do {
-                        continuation.yield(try action.decodeRecord(as: ChatMessage.self, decoder: AnyJSON.decoder))
+                        continuation.yield(try action.decodeRecord(as: Record.self, decoder: AnyJSON.decoder))
                     } catch {
-                        print("[Chat] 실시간 메시지 해석 실패:", error)
+                        print("[Chat] 실시간 \(Record.self) 해석 실패:", error)
                     }
                 }
                 continuation.finish()
             }
             continuation.onTermination = { _ in task.cancel() }
         }
-        return Subscription(messages: messages, close: { await client.removeChannel(channel) })
     }
 }

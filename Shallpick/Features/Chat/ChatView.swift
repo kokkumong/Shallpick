@@ -12,6 +12,8 @@ struct ChatView: View {
     @State private var attachments: [PhotoItem]
     @State private var isPickingPhotos = false
     @State private var viewing: PhotoViewerItem?
+    /// 질문 아래 블럭을 누르면 사진 화면(반응/생각 남기기)으로
+    @State private var reviewing: PhotoReviewItem?
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var loadAttempt = 0
     @Environment(\.dismiss) private var dismiss
@@ -58,6 +60,14 @@ struct ChatView: View {
             .fullScreenCover(item: $viewing) { item in
                 ChatPhotoViewer(photos: item.photos)
             }
+            .navigationDestination(item: $reviewing) { item in
+                PhotoDetailView(
+                    folder: store.folder,
+                    photos: item.photos,
+                    startID: item.photos[0].id,
+                    avatarURL: myAvatarURL
+                )
+            }
     }
 
     private var myAvatarURL: URL? {
@@ -73,6 +83,14 @@ struct ChatView: View {
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
         guard !photos.isEmpty else { return }
         viewing = PhotoViewerItem(photos: photos)
+    }
+
+    /// 질문 아래 블럭: 다른 사람 질문이면 확인했다고 남기고, 사진 화면에서 반응/생각을 남기게
+    private func review(_ message: ChatMessage) {
+        let photos = store.attachedPhotos(of: message).compactMap { $0 }
+        guard !photos.isEmpty else { return }
+        store.markChecked(message)
+        reviewing = PhotoReviewItem(messageID: message.id, photos: photos)
     }
 
     @ViewBuilder
@@ -121,6 +139,9 @@ struct ChatView: View {
                         message: message,
                         photos: photos,
                         state: store.deliveryStates[message.id],
+                        footer: store.isPhotoQuestion(message) && store.deliveryStates[message.id] == nil
+                            ? .checkedBy(store.checkers(of: message), onTap: { review(message) })
+                            : nil,
                         onRetry: { store.retry(message.id) },
                         onOpenPhotos: { openPhotos(of: message) }
                     )
@@ -129,6 +150,7 @@ struct ChatView: View {
                         message: message,
                         photos: photos,
                         sender: store.member(for: message.userID),
+                        footer: store.isPhotoQuestion(message) ? .goCheck(onTap: { review(message) }) : nil,
                         onOpenPhotos: { openPhotos(of: message) }
                     )
                 }
@@ -233,6 +255,7 @@ struct ChatRow: Identifiable {
 // MARK: - 말풍선
 
 /// 말풍선 (blue100: 다른 사람, black200: 나). 한 줄 최대 250
+/// 사진 질문이면 카카오톡 알림 카드처럼 말풍선 안 아래에 꽉 찬 버튼이 붙음 (Figma 에 없는 부분)
 private struct ChatBubble: View {
     let text: String
     let color: Color
@@ -240,28 +263,44 @@ private struct ChatBubble: View {
     var alignment: Alignment = .leading
     /// 사진 여러 장이 붙은 질문이면 오른쪽에 > (다른 사람: brandBlue, 나: black400)
     var chevronColor: Color?
+    /// 사진 질문 버튼 (확인하러가기 / 누가 확인했는지)
+    var footer: QuestionFooter?
     var onTap: (() -> Void)?
 
+    /// 버튼이 붙은 질문 카드 너비 (버튼이 꽉 차도록 고정)
+    static let cardWidth: CGFloat = 240
+
     var body: some View {
-        HStack(spacing: 10) {
-            Text(text)
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(Color.black800)
-            if let chevronColor {
-                Image(.iconChevronRight)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 5, height: 10)
-                    .foregroundStyle(chevronColor)
-                    .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Text(text)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.black800)
+                if footer != nil { Spacer(minLength: 0) }
+                if let chevronColor {
+                    Image(.iconChevronRight)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 5, height: 10)
+                        .foregroundStyle(chevronColor)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, footer == nil ? 0 : 4)
+            .padding(.top, footer == nil ? 0 : 4)
+            .contentShape(Rectangle())
+            .onTapGesture { onTap?() }
+            .accessibilityAddTraits(onTap == nil ? [] : .isButton)
+
+            if let footer {
+                QuestionFooterButton(footer: footer)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, footer == nil ? 12 : 8)
+        .padding(.top, footer == nil ? 10 : 8)
+        .padding(.bottom, footer == nil ? 10 : 8)
+        .frame(width: footer == nil ? nil : Self.cardWidth, alignment: .leading)
         .background(color, in: RoundedRectangle(cornerRadius: 20))
-        .contentShape(RoundedRectangle(cornerRadius: 20))
-        .onTapGesture { onTap?() }
-        .accessibilityAddTraits(onTap == nil ? [] : .isButton)
         .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 20))
         .contextMenu {
             Button("복사", systemImage: "doc.on.doc") {
@@ -280,6 +319,7 @@ private struct MessageContent: View {
     let color: Color
     let chevronColor: Color
     let alignment: HorizontalAlignment
+    var footer: QuestionFooter?
     let onOpenPhotos: () -> Void
 
     var body: some View {
@@ -298,10 +338,95 @@ private struct MessageContent: View {
                 color: color,
                 alignment: alignment == .trailing ? .trailing : .leading,
                 chevronColor: photos.count > 1 ? chevronColor : nil,
+                footer: footer,
                 onTap: photos.isEmpty ? nil : onOpenPhotos
             )
         }
         .padding(.bottom, 3)
+    }
+}
+
+// MARK: - 사진 질문 버튼
+
+enum QuestionFooter {
+    /// 다른 사람이 보낸 질문: 확인하러가기
+    case goCheck(onTap: () -> Void)
+    /// 내가 보낸 질문: 누가 확인했는지 (확인한 순서)
+    case checkedBy([ChatMember], onTap: () -> Void)
+
+    /// "정규호님이 확인했어요" / "정규호, 김승완님이 확인했어요" / "정규호님 외 2명이 확인했어요"
+    static func checkedText(_ names: [String]) -> String {
+        switch names.count {
+        case 0: "아직 아무도 확인하지 않았어요"
+        case 1: "\(names[0])님이 확인했어요"
+        case 2: "\(names[0]), \(names[1])님이 확인했어요"
+        default: "\(names[0])님 외 \(names.count - 1)명이 확인했어요"
+        }
+    }
+}
+
+/// 질문 카드 안 아래의 꽉 찬 흰 버튼 (카카오톡 알림 카드 버튼처럼)
+private struct QuestionFooterButton: View {
+    let footer: QuestionFooter
+
+    var body: some View {
+        switch footer {
+        case let .goCheck(onTap):
+            Button(action: onTap) {
+                Text("확인하러가기")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.black800)
+                    .cardButtonStyle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("사진을 보고 반응이나 생각을 남겨요")
+
+        case let .checkedBy(members, onTap):
+            let text = QuestionFooter.checkedText(members.map(\.nickname))
+            Button(action: onTap) {
+                HStack(spacing: 6) {
+                    if !members.isEmpty {
+                        CheckerAvatars(members: Array(members.prefix(3)))
+                    }
+                    Text(text)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(members.isEmpty ? Color.black400 : Color.black600)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                .cardButtonStyle()
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(text)
+            .accessibilityHint("사진에 남긴 반응과 생각을 봐요")
+            .accessibilityAddTraits(.isButton)
+        }
+    }
+}
+
+/// 확인한 사람 프로필을 조금씩 겹쳐서 (최대 3명)
+private struct CheckerAvatars: View {
+    let members: [ChatMember]
+
+    var body: some View {
+        HStack(spacing: -6) {
+            ForEach(members, id: \.userID) { member in
+                ChatAvatar(url: member.avatarURL.flatMap(URL.init(string:)))
+                    .frame(width: 18, height: 18)
+                    .overlay(Circle().stroke(.white, lineWidth: 1.5))
+            }
+        }
+    }
+}
+
+private extension View {
+    /// 카드 너비에 꽉 찬 흰 버튼 (높이 40)
+    func cardButtonStyle() -> some View {
+        padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 40)
+            .background(.white, in: RoundedRectangle(cornerRadius: 14))
+            .contentShape(RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -350,6 +475,7 @@ private struct OtherMessageRow: View {
     let message: ChatMessage
     let photos: [PhotoItem?]
     let sender: ChatMember?
+    var footer: QuestionFooter?
     let onOpenPhotos: () -> Void
 
     var body: some View {
@@ -372,6 +498,7 @@ private struct OtherMessageRow: View {
                 color: .blue100,
                 chevronColor: .brandBlue,
                 alignment: .leading,
+                footer: footer,
                 onOpenPhotos: onOpenPhotos
             )
 
@@ -386,6 +513,7 @@ private struct MyMessageRow: View {
     let message: ChatMessage
     let photos: [PhotoItem?]
     let state: ChatStore.DeliveryState?
+    var footer: QuestionFooter?
     let onRetry: () -> Void
     let onOpenPhotos: () -> Void
 
@@ -412,6 +540,7 @@ private struct MyMessageRow: View {
                 color: .black200,
                 chevronColor: .black400,
                 alignment: .trailing,
+                footer: footer,
                 onOpenPhotos: onOpenPhotos
             )
             .opacity(state == .sending ? 0.6 : 1)
@@ -582,6 +711,12 @@ private struct ChatInputBar: View {
 
 private struct PhotoViewerItem: Identifiable {
     let id = UUID()
+    let photos: [PhotoItem]
+}
+
+/// 질문 블럭으로 여는 사진 화면 (사진은 1장 이상)
+private struct PhotoReviewItem: Hashable {
+    let messageID: UUID
     let photos: [PhotoItem]
 }
 
