@@ -4,6 +4,7 @@ import Supabase
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var auth = AuthStore()
     @State private var isOnboardingFinished = false
     @Namespace private var brandNamespace
@@ -33,6 +34,12 @@ struct ContentView: View {
         }
         .animation(.spring(duration: 0.6), value: isOnboardingFinished)
         .animation(.spring(duration: 0.6), value: auth.state)
+        .transaction { transaction in
+            if reduceMotion {
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
         .task { await auth.observeSession() }
         .task {
             try? await Task.sleep(for: onboardingMinimumDuration)

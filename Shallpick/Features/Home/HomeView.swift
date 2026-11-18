@@ -5,6 +5,8 @@ import SwiftUI
 struct HomeView: View {
     let userID: UUID
     var onSignOut: () -> Void = {}
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var chatUnreadCounts: [UUID: Int] = [:]
 
     @State private var profile: Profile?
     /// 지금 펼쳐진 메뉴 (알림 내역 / 프로필)
@@ -45,10 +47,15 @@ struct HomeView: View {
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: HomeRoute.self) { route in
                     switch route {
+                    case .settings:
+                        AccountSettingsView(userID: userID, profile: profile,
+                            onEditNickname: { folderDialog = .editNickname(current: profile?.nickname ?? "") },
+                            onSignOut: onSignOut)
                     case let .folder(folder):
                         FolderDetailView(
                             folder: folder,
                             avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
+                            unreadCount: chatUnreadCounts[folder.id] ?? 0,
                             onAskQuestion: { photos in path.append(.chat(folder, attaching: photos)) },
                             onOpenChat: { path.append(.chat(folder)) }
                         )
@@ -69,6 +76,15 @@ struct HomeView: View {
             if isBackHome { Task { await reloadCovers() } }
         }
         .onChange(of: path) { old, new in updateReadState(from: old, to: new) }
+        .overlay { if path.last == .settings { folderDialogView } }
+        .task(id: visibleFolderID) {
+            if let folderID = visibleFolderID { await refreshUnreadCount(folderID: folderID) }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, let folderID = visibleFolderID {
+                Task { await refreshUnreadCount(folderID: folderID) }
+            }
+        }
         .task(id: userID) { await listenForMessages() }
         #if DEBUG
         .task(id: userID) { await simulateIncomingAfterBackground() }
@@ -90,7 +106,7 @@ struct HomeView: View {
                     avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
                     searchText: $searchText,
                     isSearching: $isSearching,
-                    onProfile: { toggle(.account) }
+                    onProfile: { path.append(.settings) }
                 )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -218,6 +234,9 @@ struct HomeView: View {
         guard message.userID != userID, !isViewingChat(of: message.folderID) else { return }
         // 다른 멤버에게 보낸 질문은 알리지 않음
         if message.isQuestion, !message.recipientIDs.contains(userID) { return }
+        if visibleFolderID == message.folderID {
+            await refreshUnreadCount(folderID: message.folderID)
+        }
         // 프로필 메뉴의 내역·빨간 점
         if isShowingNotifications {
             Task { await reloadNotifications() }
@@ -225,6 +244,7 @@ struct HomeView: View {
             hasNewNotifications = true
         }
 
+        guard NotificationPreferences(userID: userID).isEnabled(message.isQuestion ? .requests : .messages) else { return }
         if UIApplication.shared.applicationState != .active, LocalNotifications.isFresh(message) {
             guard let folder = await folder(id: message.folderID) else { return }
             let nickname = await nickname(of: message.userID, in: folder.id)
@@ -272,6 +292,23 @@ struct HomeView: View {
 
     /// 이 기기에 저장한 읽음 기록
     private var readState: NotificationReadState { NotificationReadState(userID: userID) }
+
+    private var visibleFolderID: UUID? {
+        if case let .folder(folder)? = path.last { return folder.id }
+        return nil
+    }
+
+    private func refreshUnreadCount(folderID: UUID) async {
+        let lastRead = readState.lastRead(folderID: folderID)
+        do {
+            let count = try await ChatRepository.unreadCount(folderID: folderID, userID: userID, since: lastRead)
+            // 읽음 처리 뒤에 오래된 응답이 도착해 숫자를 되살리지 않게 합니다.
+            guard !Task.isCancelled, readState.lastRead(folderID: folderID) == lastRead else { return }
+            chatUnreadCounts[folderID] = count
+        } catch {
+            // 네트워크 오류 때는 기존 숫자를 유지하고, 다음 진입/활성화 시 다시 확인합니다.
+        }
+    }
 
     /// 알림 내역을 새로 불러오고 프로필의 빨간 점을 맞춤. 이미 받은 내역은 불러오는 동안에도 그대로 보여 줌
     private func reloadNotifications() async {
@@ -323,6 +360,7 @@ struct HomeView: View {
         for route in [old.last, new.last] {
             if case let .chat(folder, _)? = route {
                 readState.markRead(folderID: folder.id)
+                chatUnreadCounts[folder.id] = 0
                 changed = true
             }
         }
@@ -416,6 +454,7 @@ struct HomeView: View {
 
 /// 메인 화면에서 쌓이는 화면
 enum HomeRoute: Hashable {
+    case settings
     case folder(Folder)
     /// attaching: 폴더 화면의 수달로 고른 사진 (첫 메시지에 붙음)
     case chat(Folder, attaching: [PhotoItem] = [])
