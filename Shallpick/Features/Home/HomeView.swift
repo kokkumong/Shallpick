@@ -130,7 +130,7 @@ struct HomeView: View {
                     onCreateFolder: { folderDialog = .create },
                     onJoinWithCode: { folderDialog = .join(code: DemoStore.shared.isActive ? "DEMO26" : "") },
                     onJoinWithQR: {
-                        if DemoStore.shared.isActive { folderDialog = .join(code: "DEMO26") }
+                        if DemoStore.shared.isActive && !ProcessInfo.processInfo.arguments.contains("-reviewCapture") { folderDialog = .join(code: "DEMO26") }
                         else { isShowingQRScanner = true }
                     }
                 )
@@ -228,7 +228,7 @@ struct HomeView: View {
                 folder: folders?.first ?? Folder.previews[0],
                 askerNickname: "현서",
                 question: "이 사진 인스타 스토리에 올려도 돼?",
-                photoURLs: (1...3).compactMap { URL(string: "https://picsum.photos/seed/\($0)/300/400") }
+                photoURLs: DemoStore.shared.isActive ? DemoStore.shared.photos(in: folders?.first?.id ?? UUID()).prefix(3).map(\.url) : (1...3).compactMap { URL(string: "https://picsum.photos/seed/\($0)/300/400") }
             ))
         }
         #endif

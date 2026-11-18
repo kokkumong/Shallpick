@@ -107,6 +107,7 @@ final class DemoFlowTests: XCTestCase {
     func testAdditionalReviewScreens() {
         continueAfterFailure = false
         let app = XCUIApplication()
+        app.launchArguments = ["-reviewCapture"]
         app.launch()
         XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
         app.buttons["demo.start"].tap()
@@ -145,7 +146,8 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "18-photo-filters")
         app.buttons["필터 닫기"].tap()
         app.buttons["사진 올리기"].tap()
-        capture(app, "19-demo-photo-upload")
+        XCTAssertTrue(app.buttons["사진"].firstMatch.waitForExistence(timeout: 10))
+        capture(app, "19-photo-library-upload")
         app.buttons["닫기"].tap()
         app.buttons["사진"].firstMatch.press(forDuration: 0.7)
         capture(app, "20-photo-selection")
@@ -181,6 +183,8 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "26-result-comment")
         app.buttons["다음 사진"].tap()
         capture(app, "27-result-dislike")
+        app.swipeUp()
+        capture(app, "27b-result-voters-and-comments")
         app.buttons["완료"].tap()
         app.buttons["확인하러가기"].tap()
         let photo = app.descendants(matching: .any).matching(identifier: "question.photo").firstMatch
@@ -195,8 +199,24 @@ final class DemoFlowTests: XCTestCase {
 
     func testReducedMotionFlow() {
         continueAfterFailure = false
+        // Use the actual system preference: accessibilityReduceMotion is read-only.
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.launch()
+        let accessibility = settings.staticTexts["Accessibility"]
+        for _ in 0..<5 where !accessibility.isHittable { settings.swipeUp() }
+        XCTAssertTrue(accessibility.waitForExistence(timeout: 10))
+        accessibility.tap()
+        settings.staticTexts["Motion"].tap()
+        let reduceMotion = settings.switches["Reduce Motion"]
+        XCTAssertTrue(reduceMotion.waitForExistence(timeout: 10))
+        if reduceMotion.value as? String != "1" { reduceMotion.tap() }
+        XCTAssertEqual(reduceMotion.value as? String, "1")
+        capture(settings, "29a-system-reduce-motion-enabled")
+        defer {
+            settings.activate()
+            if reduceMotion.exists && reduceMotion.value as? String == "1" { reduceMotion.tap() }
+        }
         let app = XCUIApplication()
-        app.launchArguments = ["-reviewReduceMotion"]
         app.launch()
         XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
         app.buttons["demo.start"].tap()
@@ -220,5 +240,26 @@ final class DemoFlowTests: XCTestCase {
         previous.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "내가 남긴 의견: 좋아").firstMatch.waitForExistence(timeout: 5))
         capture(app, "30-reduced-motion-vote")
+    }
+
+    func testQuestionAlertAndEmptyFolder() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-demoQuestionAlert"]
+        app.launch()
+        XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
+        app.buttons["demo.start"].tap()
+        XCTAssertTrue(app.buttons["바로 응답하기"].waitForExistence(timeout: 10))
+        capture(app, "31-incoming-question-alert")
+        app.buttons["나중에!"].tap()
+        app.buttons["폴더 추가"].tap()
+        app.buttons["새 폴더 만들기"].tap()
+        app.textFields.firstMatch.typeText("Review folder")
+        app.buttons["확인"].tap()
+        let folder = app.buttons["Review folder"]
+        XCTAssertTrue(folder.waitForExistence(timeout: 10))
+        folder.tap()
+        XCTAssertTrue(app.buttons["채팅"].waitForExistence(timeout: 10))
+        capture(app, "32-empty-folder")
     }
 }

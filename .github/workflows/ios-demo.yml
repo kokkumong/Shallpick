@@ -73,11 +73,13 @@ jobs:
         timeout-minutes: 20
         run: |
           set -o pipefail
-          echo 'Discovering available iOS 26 simulator devices'
-          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for k,v in d["devices"].items() if "iOS-26" in k for x in v if "iPhone" in x["name"]))')
-          echo "Booting simulator $DEVICE"
-          xcrun simctl boot "$DEVICE" || true
-          xcrun simctl bootstatus "$DEVICE" -b
+          python3 scripts/boot-review-simulator.py
+          DEVICE=$(cat build/device.txt)
+          APP=build/demo/Build/Products/Debug-iphonesimulator/Shallpick.app
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          xcrun simctl install "$DEVICE" "$APP"
+          xcrun simctl privacy "$DEVICE" grant photos "$BUNDLE"
+          xcrun simctl addmedia "$DEVICE" Shallpick/Assets.xcassets/DemoPhoto*.imageset/photo.jpg
           xcrun simctl io "$DEVICE" recordVideo --codec=h264 build/demo-flow.mov &
           VIDEO_PID=$!
           trap 'kill -INT "$VIDEO_PID" 2>/dev/null || true; wait "$VIDEO_PID" || true' EXIT
@@ -100,6 +102,7 @@ jobs:
           name: iOS-demo-verification-${{ github.sha }}
           path: |
             build/*.log
+            build/device.txt
             build/demo-flow.mov
             build/screenshots/
           retention-days: 14

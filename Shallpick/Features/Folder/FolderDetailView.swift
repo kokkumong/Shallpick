@@ -112,7 +112,7 @@ struct FolderDetailView: View {
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
                 Group {
-                    if DemoStore.shared.isActive {
+                    if DemoStore.shared.isActive && !ProcessInfo.processInfo.arguments.contains("-reviewCapture") {
                         DemoPhotoPicker {
                             DemoStore.shared.addSamplePhotos(to: folder.id)
                             isShowingPhotoPicker = false
