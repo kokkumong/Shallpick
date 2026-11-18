@@ -23,6 +23,8 @@ struct FolderDetailView: View {
     @State private var isShowingPhotoPicker = false
     @State private var isShowingQuestionPicker = false
     @State private var isShowingInvite = false
+    /// 그리드에서 누른 사진 → 사진 크게 보기 (Figma 사진 클릭시 540:10918)
+    @State private var openedPhoto: PhotoItem?
     /// 선택 모드의 수달 → 고른 사진으로 질문 보내기 (Figma 3, 512:10261)
     @State private var isShowingQuestionCompose = false
     /// 사진을 꾹 누르면 선택 모드 (nil 이면 보통 화면). 고른 사진 id
@@ -93,6 +95,14 @@ struct FolderDetailView: View {
             .sensoryFeedback(.impact(weight: .medium), trigger: selection == nil) { wasNormal, _ in wasNormal }
             .navigationDestination(isPresented: $isShowingChat) {
                 ChatView(folder: folder, attaching: chatAttachments)
+            }
+            .navigationDestination(item: $openedPhoto) { photo in
+                PhotoDetailView(
+                    folder: folder,
+                    photos: photos.filtered(by: filters),
+                    startID: photo.id,
+                    avatarURL: avatarURL
+                )
             }
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
@@ -168,6 +178,10 @@ struct FolderDetailView: View {
                     guard var current = selection else { return }
                     if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
                     selection = current
+                },
+                onOpen: { photo in
+                    isShowingFilterMenu = false
+                    openedPhoto = photo
                 }
             )
             .refreshable { await reload() }
@@ -479,6 +493,8 @@ private struct PhotoGrid: View {
     var selection: Set<UUID>?
     var onLongPress: (PhotoItem) -> Void = { _ in }
     var onToggle: (PhotoItem) -> Void = { _ in }
+    /// 보통 모드에서 사진을 누르면 크게 보기
+    var onOpen: (PhotoItem) -> Void = { _ in }
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
 
@@ -514,16 +530,16 @@ private struct PhotoGrid: View {
             }
             .contentShape(Rectangle())
             .onTapGesture {
-                if isSelecting { onToggle(photo) }
+                if isSelecting { onToggle(photo) } else { onOpen(photo) }
             }
             .onLongPressGesture(minimumDuration: 0.4) {
                 if !isSelecting { onLongPress(photo) }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("사진")
-            .accessibilityAddTraits(isSelecting ? [.isButton] : [])
+            .accessibilityAddTraits(.isButton)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
-            .accessibilityAction { if isSelecting { onToggle(photo) } }
+            .accessibilityAction { if isSelecting { onToggle(photo) } else { onOpen(photo) } }
             .accessibilityAction(named: "선택") { if !isSelecting { onLongPress(photo) } }
     }
 }
