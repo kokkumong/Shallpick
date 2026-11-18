@@ -22,6 +22,8 @@ struct PhotoDetailView: View {
     @State private var isSaving = false
     @State private var notice: String?
     @State private var errorMessage: String?
+    /// 댓글 입력창에 키보드가 올라와 있는지
+    @FocusState private var isCommentFocused: Bool
 
     init(folder: Folder, photos: [PhotoItem], startID: UUID, avatarURL: URL? = nil) {
         self.folder = folder
@@ -40,9 +42,14 @@ struct PhotoDetailView: View {
         pager
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
-            .safeAreaInset(edge: .top, spacing: 0) { header }
+            // 키보드 바깥을 누르면 키보드 내림 (사진 두 번 탭·스크롤은 그대로)
+            .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
+            .safeAreaInset(edge: .top, spacing: 0) {
+                header
+                    .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                PhotoCommentInputBar(text: $draft, onSend: sendComment)
+                PhotoCommentInputBar(text: $draft, isFocused: $isCommentFocused, onSend: sendComment)
             }
             .overlay(alignment: .top) { noticeBanner }
             .overlay {
@@ -716,6 +723,7 @@ private struct PhotoCommentRow: View {
 
 private struct PhotoCommentInputBar: View {
     @Binding var text: String
+    var isFocused: FocusState<Bool>.Binding
     let onSend: () -> Void
 
     private var canSend: Bool {
@@ -730,6 +738,7 @@ private struct PhotoCommentInputBar: View {
                 .lineLimit(1...5)
                 .frame(minHeight: 30)
                 .padding(.leading, 12)
+                .focused(isFocused)
                 .onChange(of: text) { _, newValue in
                     if newValue.count > PhotoFeedbackRepository.maxCommentLength {
                         text = String(newValue.prefix(PhotoFeedbackRepository.maxCommentLength))
