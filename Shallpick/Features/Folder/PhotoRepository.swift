@@ -24,6 +24,7 @@ nonisolated struct PhotoItem: Decodable, Sendable, Identifiable, Hashable {
 /// supabase/migrations 의 public.photos + Storage 버킷 photos
 enum PhotoRepository {
     static let bucket = "photos"
+    private static var didFailDownload = false
     /// 올릴 때 긴 변 최대 길이
     static let maxUploadSide: CGFloat = 2048
 
@@ -189,6 +190,10 @@ enum PhotoRepository {
     }
 
     static func download(_ photo: PhotoItem) async throws -> Data {
+        if DemoStore.shared.isActive && ProcessInfo.processInfo.arguments.contains("-failDownloadOnce") && !didFailDownload {
+            didFailDownload = true
+            throw NSError(domain: "demo.test.download", code: 1)
+        }
         if DemoStore.shared.isActive, let url = photo.url, let image = UIImage(named: url.lastPathComponent), let data = image.jpegData(compressionQuality: 0.9) { return data }
         return try await client.storage.from(bucket).download(path: photo.storagePath)
     }

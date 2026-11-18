@@ -18,6 +18,7 @@ struct QuestionResultView: View {
     @State private var isLoading = true
     @State private var loadFailed = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var availablePhotos: [PhotoItem] = []
     @State private var isExporting = false
     @State private var savedIDs: Set<UUID> = []
@@ -101,8 +102,8 @@ struct QuestionResultView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { exportBar }
         .background(Color.black50)
         .toolbar(.hidden, for: .navigationBar)
-        .animation(.snappy(duration: 0.2), value: selectedPinID)
-        .animation(.snappy(duration: 0.2), value: currentID)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: selectedPinID)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: currentID)
         .onAppear { if currentID == nil { currentID = photos.first?.id } }
         .onChange(of: currentID) { selectedPinID = nil }
         .task(id: scenePhase) {
@@ -186,7 +187,7 @@ struct QuestionResultView: View {
     private func move(_ step: Int) {
         let next = currentIndex + step
         guard photos.indices.contains(next) else { return }
-        withAnimation(.snappy) { currentID = photos[next].id }
+        withAnimation(reduceMotion ? nil : .snappy) { currentID = photos[next].id }
     }
 
     // MARK: - 좋아 / 싫어
@@ -336,14 +337,14 @@ struct QuestionResultView: View {
                         .frame(maxWidth: .infinity, minHeight: 48)
                         .background(Color.black800, in: Capsule())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ShallpickPressStyle())
                     .disabled(unsavedPhotos.isEmpty || isLoading || loadFailed || isExporting)
                     .opacity(unsavedPhotos.isEmpty || loadFailed ? 0.4 : 1)
                     Button { Task { await export(share: true) } } label: {
                         Image(systemName: "square.and.arrow.up").font(.system(size: 20, weight: .medium))
                             .frame(width: 48, height: 48).background(.white, in: Circle())
                     }
-                    .buttonStyle(.plain).accessibilityLabel("모두 동의한 사진 공유")
+                    .buttonStyle(ShallpickPressStyle()).accessibilityLabel("모두 동의한 사진 공유")
                     .disabled(approvedPhotos.isEmpty || isLoading || loadFailed || isExporting)
                     .opacity(approvedPhotos.isEmpty || loadFailed ? 0.4 : 1)
                 }

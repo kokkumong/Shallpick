@@ -83,7 +83,7 @@ struct QuestionRespondView: View {
                     content(in: proxy.size)
                         .allowsHitTesting(!isLoading && !loadFailed && !isSendingPin)
                         .overlay {
-                            if isLoading { ProgressView().padding().background(.regularMaterial, in: Capsule()) }
+                            if isLoading || isVoting { ProgressView(isVoting ? "의견 저장 중" : "불러오는 중").padding().background(.regularMaterial, in: Capsule()) }
                             else if loadFailed { Button("답변 불러오기 다시 시도") { Task { await load() } }
                                 .padding().background(.regularMaterial, in: Capsule()) }
                         }
@@ -93,7 +93,7 @@ struct QuestionRespondView: View {
             .ignoresSafeArea(.keyboard)
 
             if draftPin != nil {
-                pinInputBar
+                pinInputBar.disabled(isSendingPin)
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }

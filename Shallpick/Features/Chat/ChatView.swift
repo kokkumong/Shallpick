@@ -246,15 +246,15 @@ struct ChatView: View {
     }
 
     private func refreshProgress() async {
-        // Only questions currently in this conversation; no per-photo queries.
-        for message in store.messages where !message.recipientIDs.isEmpty && !message.photoIDs.isEmpty {
-            do {
-                let votes = try await QuestionResponseRepository.fetchVotes(messageID: message.id)
+        let messages = store.messages.filter { !$0.recipientIDs.isEmpty && !$0.photoIDs.isEmpty }
+        do {
+            let votes = try await QuestionResponseRepository.fetchVotes(messageIDs: messages.map(\.id))
+            guard !Task.isCancelled else { return }
+            for message in messages {
                 progressByMessage[message.id] = QuestionApproval(messageID: message.id,
                     recipientIDs: message.recipientIDs, photoIDs: message.photoIDs, votes: votes).completedRecipientIDs.count
-            } catch { progressByMessage[message.id] = nil }
-            if Task.isCancelled { return }
-        }
+            }
+        } catch { progressByMessage = [:] }
     }
 
     private func focusRequestedMessage() async {

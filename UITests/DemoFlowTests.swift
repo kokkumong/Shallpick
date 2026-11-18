@@ -35,6 +35,50 @@ final class DemoFlowTests: XCTestCase {
         add(screenshot)
     }
 
+    func testFailureRecovery() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-reviewCapture", "-failVoteOnce", "-failDownloadOnce"]
+        app.launch()
+        XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
+        tap(app.buttons["demo.start"])
+        tap(app.buttons["주말 나들이"])
+        tap(app.buttons["채팅"])
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "응답 완료")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        tap(result)
+        XCTAssertTrue(app.buttons["2장 저장"].waitForExistence(timeout: 10))
+        tap(app.buttons["2장 저장"])
+        XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 15))
+        capture(app, "failure-01-partial-save")
+        tap(app.alerts.buttons["확인"])
+        XCTAssertTrue(app.buttons["1장 저장"].exists, "Only failed photo should remain")
+        tap(app.buttons["1장 저장"])
+        XCTAssertTrue(app.alerts.staticTexts["사진 1장을 저장했어요"].waitForExistence(timeout: 15))
+        tap(app.alerts.buttons["확인"])
+        XCTAssertFalse(app.buttons["저장 완료"].isEnabled)
+        tap(app.buttons["완료"])
+        let review = app.buttons["확인하러가기"].firstMatch
+        if !review.isHittable { app.swipeDown() }
+        tap(review)
+        let photo = app.descendants(matching: .any).matching(identifier: "question.photo").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10))
+        func vote() {
+            photo.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.2))
+                .press(forDuration: 0.05, thenDragTo: photo.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.8)))
+        }
+        vote()
+        XCTAssertTrue(app.alerts.staticTexts["의견을 남기지 못했어요. 다시 시도해 주세요."].waitForExistence(timeout: 10))
+        capture(app, "failure-02-vote-not-completed")
+        tap(app.alerts.buttons["확인"])
+        XCTAssertFalse(app.buttons["이전 사진"].isEnabled)
+        XCTAssertFalse(app.staticTexts["모든 사진에 의견을 남겼어요"].exists)
+        vote()
+        let next = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: app.buttons["이전 사진"])
+        XCTAssertEqual(XCTWaiter.wait(for: [next], timeout: 10), .completed)
+        capture(app, "failure-03-vote-retried")
+    }
+
     func testSharingCompletion() {
         continueAfterFailure = false
         let app = XCUIApplication()

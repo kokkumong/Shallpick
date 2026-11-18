@@ -4,6 +4,7 @@ import Supabase
 /// supabase/migrations 의 public.question_votes, public.question_pins
 enum QuestionResponseRepository {
     static let maxPinLength = 300
+    private static var didFailVote = false
 
     private struct NewVote: Encodable {
         let message_id: UUID
@@ -32,16 +33,22 @@ enum QuestionResponseRepository {
     /// userID 를 주면 그 사람 것만
     static func fetchVotes(messageID: UUID, userID: UUID? = nil) async throws -> [QuestionVoteRecord] {
         if DemoStore.shared.isActive { return DemoStore.shared.questionVotes.filter { $0.messageID == messageID && (userID == nil || $0.userID == userID) } }
+        try await fetchVotes(messageIDs: [messageID], userID: userID)
+    }
+
+    static func fetchVotes(messageIDs: [UUID], userID: UUID? = nil) async throws -> [QuestionVoteRecord] {
+        if DemoStore.shared.isActive { return DemoStore.shared.questionVotes.filter { messageIDs.contains($0.messageID) && (userID == nil || $0.userID == userID) } }
+        guard !messageIDs.isEmpty else { return [] }
         var query = try client
             .from("question_votes")
             .select("message_id, photo_id, user_id, vote, created_at")
-            .eq("message_id", value: messageID)
+            .in("message_id", values: messageIDs)
         if let userID { query = query.eq("user_id", value: userID) }
         var result: [QuestionVoteRecord] = []
         var offset = 0
         while true {
             let page: [QuestionVoteRecord] = try await query
-                .order("photo_id", ascending: true).order("user_id", ascending: true)
+                .order("message_id", ascending: true).order("photo_id", ascending: true).order("user_id", ascending: true)
                 .range(from: offset, to: offset + 499).execute().value
             result += page
             if page.count < 500 { return result }
@@ -70,6 +77,10 @@ enum QuestionResponseRepository {
 
     /// 이미 남겼으면 바꿈
     static func setVote(_ vote: QuestionVote, messageID: UUID, folderID: UUID, photoID: UUID) async throws {
+        if DemoStore.shared.isActive && ProcessInfo.processInfo.arguments.contains("-failVoteOnce") && !didFailVote {
+            didFailVote = true
+            throw NSError(domain: "demo.test.network", code: 1)
+        }
         if DemoStore.shared.isActive { DemoStore.shared.setVote(vote, messageID: messageID, photoID: photoID); return }
         try await client
             .from("question_votes")
