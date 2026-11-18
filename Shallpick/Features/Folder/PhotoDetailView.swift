@@ -345,12 +345,23 @@ private struct PhotoDetailPage: View {
     /// 두 번 눌렀을 때 가운데 크게 떴다 사라지는 하트
     @State private var heartBurst = 0
     @State private var isShowingHeart = false
+    /// 머리와 입력창 사이에 보이는 높이, 사진 높이 (사진을 가운데 두려고 잼)
+    @State private var visibleHeight: CGFloat = 0
+    @State private var photoHeight: CGFloat = 0
+
+    /// 댓글이 없으면 사진을 보이는 칸 가운데에, 댓글이 생기면 위로 붙임
+    private var topSpace: CGFloat {
+        guard feedback.comments.isEmpty, photoHeight > 0 else { return 0 }
+        return max(0, (visibleHeight - photoHeight) / 2)
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     photoView
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { photoHeight = $0 }
+                        .padding(.top, topSpace)
 
                     // 사진 아래 끝에 살짝 걸침 (540:10933)
                     PhotoReactionRow(
@@ -376,6 +387,11 @@ private struct PhotoDetailPage: View {
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .scrollClipDisabled()
+            // 머리와 입력창은 안전 영역으로 빠져 있어서 containerSize 가 그 사이 높이
+            .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
+                visibleHeight = height
+            }
+            .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
             .onChange(of: scrollToCommentID) { _, id in
                 guard let id, feedback.comments.contains(where: { $0.id == id }) else { return }
                 withAnimation(.snappy) { proxy.scrollTo(id, anchor: .bottom) }
