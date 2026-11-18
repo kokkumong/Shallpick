@@ -155,6 +155,13 @@ enum ChatRepository {
         return latestFirst.reversed()
     }
 
+    static func fetchMessage(id: UUID, folderID: UUID) async throws -> ChatMessage? {
+        if DemoStore.shared.isActive { return DemoStore.shared.messages(in: folderID).first { $0.id == id } }
+        let rows: [ChatMessage] = try await client.from("messages").select()
+            .eq("id", value: id).eq("folder_id", value: folderID).limit(1).execute().value
+        return rows.first
+    }
+
     static func fetchMembers(folderID: UUID) async throws -> [ChatMember] {
         if DemoStore.shared.isActive { return DemoStore.shared.members }
         return try await client
@@ -173,6 +180,8 @@ enum ChatRepository {
         recipientIDs: [UUID] = []
     ) async throws -> ChatMessage {
         if DemoStore.shared.isActive { return DemoStore.shared.send(id: id, folderID: folderID, body: body, photoIDs: photoIDs, recipientIDs: recipientIDs) }
+        // Check the stable client id before retrying an uncertain network result.
+        if let existing = try await fetchMessage(id: id, folderID: folderID) { return existing }
         return try await client
             .from("messages")
             .insert(NewMessage(

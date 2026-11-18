@@ -20,6 +20,8 @@ struct PhotoDetailView: View {
     @State private var isShowingInvite = false
     @State private var isShowingQuestionCompose = false
     @State private var isSaving = false
+    @State private var sentQuestionID: UUID?
+    @State private var isShowingChat = false
     @State private var notice: String?
     @State private var errorMessage: String?
     /// 댓글 입력창에 키보드가 올라와 있는지
@@ -61,9 +63,15 @@ struct PhotoDetailView: View {
             .animation(.snappy(duration: 0.2), value: notice)
             .animation(.snappy(duration: 0.2), value: isSaving)
             .toolbar(.hidden, for: .navigationBar)
-            .fullScreenCover(isPresented: $isShowingQuestionCompose) {
+            .navigationDestination(isPresented: $isShowingChat) {
+                ChatView(folder: folder, focusMessageID: sentQuestionID)
+            }
+            .fullScreenCover(isPresented: $isShowingQuestionCompose, onDismiss: {
+                if sentQuestionID != nil { isShowingChat = true }
+            }) {
                 if let currentPhoto {
-                    QuestionComposeView(folder: folder, photos: [currentPhoto], onSent: {
+                    QuestionComposeView(folder: folder, photos: [currentPhoto], onSent: { message in
+                        sentQuestionID = message.id
                         showNotice("질문을 보냈어요")
                     })
                 }

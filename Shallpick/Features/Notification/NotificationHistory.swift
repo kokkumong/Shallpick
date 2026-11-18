@@ -18,6 +18,11 @@ nonisolated struct NotificationItem: Identifiable, Hashable, Sendable {
     /// 그 폴더 채팅을 마지막으로 본 뒤에 온 것
     let isUnread: Bool
 
+    var questionID: UUID? {
+        guard case .question = kind, id.hasPrefix("question-") else { return nil }
+        return UUID(uuidString: String(id.dropFirst("question-".count)))
+    }
+
     var text: String {
         switch kind {
         case let .unreadChats(count):

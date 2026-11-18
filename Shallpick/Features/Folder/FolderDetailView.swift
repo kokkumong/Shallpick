@@ -38,6 +38,27 @@ struct FolderDetailView: View {
     /// 삭제 확인을 기다리는 사진
     @State private var pendingDelete: [PhotoItem]?
     @State private var errorMessage: String?
+    @State private var isSearching = false
+    @State private var searchText = ""
+    @State private var memberNames: [UUID: String] = [:]
+    @State private var likedIDs: Set<UUID> = []
+    @State private var likesFailed = false
+    @State private var pendingUploads: [(asset: PHAsset, id: UUID)] = []
+    @State private var failedSaves: [PhotoItem] = []
+    @State private var sentQuestionID: UUID?
+
+    private var visiblePhotos: [PhotoItem] {
+        photos.filtered(by: filters, likedIDs: likedIDs).filter { photo in
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard !query.isEmpty else { return true }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            let date = formatter.string(from: photo.createdAt)
+            let korean = photo.createdAt.formatted(.dateTime.locale(Locale(identifier: "ko_KR")).year().month().day())
+            return [memberNames[photo.uploaderID] ?? "", date, date.replacingOccurrences(of: "-", with: "."), korean]
+                .contains { $0.lowercased().contains(query) }
+        }
+    }
 
     private struct BusyProgress: Equatable {
         let title: String
@@ -98,12 +119,12 @@ struct FolderDetailView: View {
             .animation(.snappy(duration: 0.2), value: selection == nil)
             .sensoryFeedback(.impact(weight: .medium), trigger: selection == nil) { wasNormal, _ in wasNormal }
             .navigationDestination(isPresented: $isShowingChat) {
-                ChatView(folder: folder, attaching: chatAttachments)
+                ChatView(folder: folder, attaching: chatAttachments, focusMessageID: sentQuestionID)
             }
             .navigationDestination(item: $openedPhoto) { photo in
                 PhotoDetailView(
                     folder: folder,
-                    photos: photos.filtered(by: filters),
+                    photos: visiblePhotos,
                     startID: photo.id,
                     avatarURL: avatarURL
                 )
@@ -137,12 +158,15 @@ struct FolderDetailView: View {
                     }
                 }
             }
-            .fullScreenCover(isPresented: $isShowingQuestionCompose) {
+            .fullScreenCover(isPresented: $isShowingQuestionCompose, onDismiss: {
+                if sentQuestionID != nil { chatAttachments = []; isShowingChat = true }
+            }) {
                 QuestionComposeView(
                     folder: folder,
                     photos: selectedPhotos,
                     onRemovePhoto: { photo in selection?.remove(photo.id) },
-                    onSent: {
+                    onSent: { message in
+                        sentQuestionID = message.id
                         selection = nil
                         showNotice("질문을 보냈어요")
                     }
@@ -168,20 +192,36 @@ struct FolderDetailView: View {
                 "문제가 생겼어요",
                 isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
             ) {
+                if !pendingUploads.isEmpty {
+                    Button("실패한 사진 다시 올리기") { Task { await retryUploads() } }
+                }
+                if !failedSaves.isEmpty {
+                    Button("실패한 사진 다시 저장") { Task { await savePhotos(failedSaves) } }
+                }
                 Button("확인", role: .cancel) {}
             } message: {
                 Text(errorMessage ?? "")
             }
             .task { await reload() }
+            .onChange(of: openedPhoto) { _, photo in
+                if photo == nil { Task { await reloadLikes() } }
+            }
+            .onChange(of: filters) { _, _ in Task { await reloadLikes() } }
     }
 
     @ViewBuilder
     private var content: some View {
         if photos.isEmpty {
             EmptyPhotoView()
+        } else if visiblePhotos.isEmpty {
+            VStack(spacing: 14) {
+                Text(likesFailed && filters.contains(.liked) ? "좋아요를 불러오지 못했어요" : "조건에 맞는 사진이 없어요")
+                Button("검색과 필터 해제") { searchText = ""; filters = [] }
+                if likesFailed { Button("다시 시도") { Task { await reloadLikes() } } }
+            }.foregroundStyle(Color.black600)
         } else {
             PhotoGrid(
-                photos: photos.filtered(by: filters),
+                photos: visiblePhotos,
                 namespace: photoNamespace,
                 selection: selection,
                 onLongPress: { photo in
@@ -206,44 +246,57 @@ struct FolderDetailView: View {
         guard DemoStore.shared.isActive || SupabaseManager.client != nil else { return }
         do {
             photos = try await PhotoRepository.fetch(folderID: folder.id)
+            let members = try await ChatRepository.fetchMembers(folderID: folder.id)
+            memberNames = Dictionary(members.map { ($0.userID, $0.nickname) }, uniquingKeysWith: { _, new in new })
+            await reloadLikes()
         } catch is CancellationError {
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func uploadPhotos(_ assets: [PHAsset]) async {
-        guard !assets.isEmpty else { return }
-        progress = BusyProgress(title: "사진 올리는 중", done: 0, total: assets.count)
-        defer { progress = nil }
-        do {
-            try await PhotoRepository.upload(assets, to: folder.id) { done in
-                progress?.done = done
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        await reload()
+    private func reloadLikes() async {
+        do { likedIDs = try await PhotoFeedbackRepository.likedPhotoIDs(in: photos); likesFailed = false }
+        catch { likesFailed = true; likedIDs = [] }
     }
 
-    // MARK: - 선택 모드: 저장 / 삭제
+    private func uploadPhotos(_ assets: [PHAsset]) async {
+        guard progress == nil else { return }
+        let existing = Set(pendingUploads.map { $0.asset.localIdentifier })
+        pendingUploads += assets.filter { !existing.contains($0.localIdentifier) }.map { ($0, UUID()) }
+        await retryUploads()
+    }
 
-    /// 선택한 사진을 기기 사진 보관함에 저장하고 선택 모드를 끝냄
-    private func saveSelected() async {
-        let targets = selectedPhotos
+    private func retryUploads() async {
+        guard progress == nil, !pendingUploads.isEmpty else { return }
+        let targets = pendingUploads
+        progress = BusyProgress(title: "사진 올리는 중", done: 0, total: targets.count)
+        defer { progress = nil }
+        for (index, item) in targets.enumerated() {
+            do {
+                try await PhotoRepository.uploadOne(item.asset, id: item.id, folderID: folder.id)
+                pendingUploads.removeAll { $0.id == item.id }
+            } catch { /* Keep this item and its stable id for retry. */ }
+            progress?.done = index + 1
+        }
+        await reload()
+        if pendingUploads.isEmpty { showNotice("사진 \(targets.count)장을 올렸어요") }
+        else { errorMessage = "\(targets.count - pendingUploads.count)장 완료, \(pendingUploads.count)장 실패. 실패한 사진만 다시 올릴 수 있어요." }
+    }
+
+    private func saveSelected() async { await savePhotos(selectedPhotos) }
+
+    private func savePhotos(_ targets: [PhotoItem]) async {
         guard !targets.isEmpty, progress == nil else { return }
         progress = BusyProgress(title: "사진 저장 중", done: 0, total: targets.count)
+        defer { progress = nil }
         do {
-            try await PhotoRepository.saveToLibrary(targets) { done in
-                progress?.done = done
-            }
-            progress = nil
-            selection = nil
-            showNotice("사진 \(targets.count)장을 저장했어요")
-        } catch {
-            progress = nil
-            errorMessage = error.localizedDescription
-        }
+            let result = try await PhotoExport.save(targets) { progress?.done = $0 }
+            failedSaves = result.failed
+            selection = result.failed.isEmpty ? nil : Set(result.failed.map(\.id))
+            if result.failed.isEmpty { showNotice("사진 \(result.succeeded.count)장을 저장했어요") }
+            else { errorMessage = "\(result.succeeded.count)장 저장, \(result.failed.count)장 실패. 실패한 사진만 다시 저장할 수 있어요." }
+        } catch { errorMessage = error.localizedDescription }
     }
 
     private func deletableCount(_ targets: [PhotoItem]) -> Int {
@@ -320,6 +373,19 @@ struct FolderDetailView: View {
     // MARK: - 상단 (246:5211)
 
     private var header: some View {
+        VStack(spacing: 0) {
+            if isSearching {
+                HStack {
+                    TextField("올린 사람, 업로드 날짜", text: $searchText)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                    Button("닫기") { isSearching = false; searchText = "" }
+                }.padding(.horizontal, 24).padding(.vertical, 12)
+            }
+            headerButtons
+        }
+    }
+
+    private var headerButtons: some View {
         HStack(spacing: 0) {
             // 선택 모드에서는 뒤로 = 선택 끝내기
             CircleIconButton(icon: .iconBack, accessibilityLabel: selection == nil ? "뒤로" : "선택 끝내기") {
@@ -362,7 +428,7 @@ struct FolderDetailView: View {
                 .transition(.opacity)
             } else {
                 HStack(spacing: 8) {
-                    CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
+                    CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: { isSearching.toggle(); onSearch() })
                     CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
                         if let onOpenChat {
                             onOpenChat()
@@ -506,10 +572,12 @@ struct FolderPhotoCell: View {
 }
 
 extension [PhotoItem] {
-    /// "내사진" 은 내가 올린 것만. "좋아요" 는 좋아요 기능이 생기면 적용합니다.
-    func filtered(by filters: Set<PhotoFilter>) -> [PhotoItem] {
-        guard filters.contains(.mine), let me = PhotoRepository.currentUserID else { return self }
-        return filter { $0.uploaderID == me }
+    /// 내 업로드와 내가 남긴 하트. 질문의 좋아/싫어 답변과는 별개.
+    func filtered(by filters: Set<PhotoFilter>, likedIDs: Set<UUID> = []) -> [PhotoItem] {
+        return filter { photo in
+            (!filters.contains(.mine) || photo.uploaderID == PhotoRepository.currentUserID) &&
+            (!filters.contains(.liked) || likedIDs.contains(photo.id))
+        }
     }
 }
 

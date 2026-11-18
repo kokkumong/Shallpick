@@ -16,17 +16,29 @@ struct ChatView: View {
     @State private var questionRoute: QuestionRoute?
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var loadAttempt = 0
+    @State private var isComposingQuestion = false
+    @State private var isInviting = false
+    @State private var flowError: String?
+    @State private var progressByMessage: [UUID: Int] = [:]
+    @State private var pendingFocusID: UUID?
+    @State private var pendingSentID: UUID?
+    private var opensQuestion = false
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
 
     /// attaching: 폴더 화면의 수달로 고른 사진. 첫 메시지에 붙어서 나감
     init(
         folder: Folder,
         attaching: [PhotoItem] = [],
+        focusMessageID: UUID? = nil,
+        opensQuestion: Bool = false,
         onTitle: @escaping () -> Void = {}
     ) {
         _store = State(initialValue: ChatStore(folder: folder))
         _attachments = State(initialValue: attaching)
         self.onTitle = onTitle
+        self.opensQuestion = opensQuestion
+        _pendingFocusID = State(initialValue: focusMessageID)
     }
 
     /// 테스트/미리보기용
@@ -51,8 +63,41 @@ struct ChatView: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .task(id: loadAttempt) { await store.run() }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                while !Task.isCancelled {
+                    if !store.isLoading { await refreshProgress() }
+                    do { try await Task.sleep(for: .seconds(5)) } catch { break }
+                }
+            }
+            .task(id: store.isLoading) {
+                guard !store.isLoading else { return }
+                if !attachments.isEmpty { isComposingQuestion = true }
+                await focusRequestedMessage()
+            }
+            .sheet(isPresented: $isInviting) { FolderInviteSheet(folder: store.folder) }
+            .alert("질문 확인", isPresented: Binding(get: { flowError != nil }, set: { if !$0 { flowError = nil } })) {
+                Button("다시 시도") { Task { await focusRequestedMessage() } }
+                Button("닫기", role: .cancel) { pendingFocusID = nil }
+            } message: { Text(flowError ?? "") }
+            .fullScreenCover(isPresented: $isComposingQuestion, onDismiss: {
+                if let id = pendingSentID {
+                    scrollPosition.scrollTo(id: id, anchor: .center)
+                    pendingSentID = nil
+                }
+            }) {
+                QuestionComposeView(folder: store.folder, photos: attachments, initialQuestion: draft) { saved in
+                    store.acceptSent(saved)
+                    draft = ""
+                    attachments = []
+                    pendingSentID = saved.id
+                    Task { await store.reloadPhotos(); await refreshProgress() }
+                }
+            }
             // 수달: 폴더 사진 중에서 질문에 붙일 사진 고르기 (폴더 화면과 같은 화면)
-            .fullScreenCover(isPresented: $isPickingPhotos) {
+            .fullScreenCover(isPresented: $isPickingPhotos, onDismiss: {
+                if !attachments.isEmpty { isComposingQuestion = true }
+            }) {
                 FolderPhotoSelectView(photos: store.folderPhotos, avatarURL: myAvatarURL) { picked in
                     attachments = picked
                 }
@@ -93,7 +138,7 @@ struct ChatView: View {
     /// 첨부 사진을 누르면: 내 사진 질문이면 결과 화면, 아니면 크게 보기
     private func openPhotos(of message: ChatMessage) {
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
-        guard !photos.isEmpty else { return }
+        guard !photos.isEmpty else { flowError = "사진을 볼 수 없어요. 삭제되었거나 불러오지 못한 사진입니다."; return }
         if store.isMine(message), store.isPhotoQuestion(message), store.deliveryStates[message.id] == nil {
             questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
         } else {
@@ -103,13 +148,26 @@ struct ChatView: View {
 
     /// 질문 카드 버튼: 다른 사람 질문이면 확인했다고 남기고 응답 화면, 내 질문이면 결과 화면
     private func review(_ message: ChatMessage) {
+        pendingFocusID = message.id
+        Task {
+            do {
+                guard let loaded = try await store.loadMessage(message.id) else { flowError = "질문이 삭제되었거나 접근할 수 없어요."; return }
+                openQuestion(loaded)
+                pendingFocusID = nil
+            } catch { flowError = "사진을 불러오지 못했어요. 다시 시도해 주세요." }
+        }
+    }
+
+    private func openQuestion(_ message: ChatMessage) {
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
-        guard !photos.isEmpty else { return }
+        guard !photos.isEmpty else { flowError = "사진을 볼 수 없어요. 삭제되었거나 불러오지 못한 사진입니다."; return }
         if store.isMine(message) {
             questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
-        } else {
+        } else if message.recipientIDs.isEmpty || message.recipientIDs.contains(store.myUserID ?? UUID()) {
             store.markChecked(message)
             questionRoute = QuestionRoute(kind: .respond, message: message, photos: photos)
+        } else {
+            flowError = "이 질문의 답변 대상으로 지정되지 않았어요."
         }
     }
 
@@ -130,7 +188,7 @@ struct ChatView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(ChatRow.rows(for: store.messages, myUserID: store.myUserID)) { row in
-                    rowView(row)
+                    rowView(row).id(row.message.id)
                 }
             }
             .padding(.horizontal, 24)
@@ -160,7 +218,7 @@ struct ChatView: View {
                         photos: photos,
                         state: store.deliveryStates[message.id],
                         footer: store.isPhotoQuestion(message) && store.deliveryStates[message.id] == nil
-                            ? .checkedBy(store.checkers(of: message), onTap: { review(message) })
+                            ? .checkedBy(store.checkers(of: message), progress: responseText(message), onTap: { review(message) })
                             : nil,
                         onRetry: { store.retry(message.id) },
                         onOpenPhotos: { openPhotos(of: message) }
@@ -179,8 +237,43 @@ struct ChatView: View {
         }
     }
 
+    private func responseText(_ message: ChatMessage) -> String? {
+        guard !message.recipientIDs.isEmpty else { return nil }
+        let total = Set(message.recipientIDs).count
+        let read = store.checkers(of: message).filter { message.recipientIDs.contains($0.userID) }.count
+        let answered = progressByMessage[message.id].map(String.init) ?? "—"
+        return "열어봄 \(read)명 · 응답 완료 \(answered)/\(total)명"
+    }
+
+    private func refreshProgress() async {
+        // Only questions currently in this conversation; no per-photo queries.
+        for message in store.messages where !message.recipientIDs.isEmpty && !message.photoIDs.isEmpty {
+            do {
+                let votes = try await QuestionResponseRepository.fetchVotes(messageID: message.id)
+                progressByMessage[message.id] = QuestionApproval(messageID: message.id,
+                    recipientIDs: message.recipientIDs, photoIDs: message.photoIDs, votes: votes).completedRecipientIDs.count
+            } catch { progressByMessage[message.id] = nil }
+            if Task.isCancelled { return }
+        }
+    }
+
+    private func focusRequestedMessage() async {
+        guard let id = pendingFocusID else { return }
+        do {
+            guard let message = try await store.loadMessage(id) else {
+                pendingFocusID = nil
+                flowError = "질문이 삭제되었거나 접근할 수 없어요."
+                return
+            }
+            scrollPosition.scrollTo(id: id, anchor: .center)
+            if opensQuestion { openQuestion(message) }
+            pendingFocusID = nil
+        } catch { flowError = "질문을 불러오지 못했어요. 다시 시도해 주세요." }
+    }
+
     private func send() {
-        store.send(draft, photos: attachments)
+        if !attachments.isEmpty { isComposingQuestion = true; return }
+        store.send(draft)
         draft = ""
         attachments = []
         withAnimation(.snappy) { scrollPosition.scrollTo(edge: .bottom) }
@@ -192,7 +285,7 @@ struct ChatView: View {
         HStack(spacing: 0) {
             CircleIconButton(icon: .iconBack, accessibilityLabel: "뒤로") { dismiss() }
 
-            Button(action: onTitle) {
+            Button(action: { isInviting = true; onTitle() }) {
                 HStack(spacing: 8) {
                     Text(store.folder.name)
                         .font(.system(size: 20, weight: .bold))
@@ -372,7 +465,7 @@ enum QuestionFooter {
     /// 다른 사람이 보낸 질문: 확인하러가기
     case goCheck(onTap: () -> Void)
     /// 내가 보낸 질문: 누가 확인했는지 (확인한 순서)
-    case checkedBy([ChatMember], onTap: () -> Void)
+    case checkedBy([ChatMember], progress: String? = nil, onTap: () -> Void)
 
     /// "정규호님이 확인했어요" / "정규호, 김승완님이 확인했어요" / "정규호님 외 2명이 확인했어요"
     static func checkedText(_ names: [String]) -> String {
@@ -401,8 +494,8 @@ private struct QuestionFooterButton: View {
             .buttonStyle(.plain)
             .accessibilityHint("사진을 보고 반응이나 생각을 남겨요")
 
-        case let .checkedBy(members, onTap):
-            let text = QuestionFooter.checkedText(members.map(\.nickname))
+        case let .checkedBy(members, progress, onTap):
+            let text = progress ?? QuestionFooter.checkedText(members.map(\.nickname))
             Button(action: onTap) {
                 HStack(spacing: 6) {
                     if !members.isEmpty {

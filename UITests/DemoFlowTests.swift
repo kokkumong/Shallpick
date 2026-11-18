@@ -35,6 +35,64 @@ final class DemoFlowTests: XCTestCase {
         add(screenshot)
     }
 
+    func testSharingCompletion() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-reviewCapture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
+        tap(app.buttons["demo.start"])
+        tap(app.buttons["주말 나들이"])
+        capture(app, "flow-01-folder")
+        tap(app.buttons["검색"])
+        let search = app.textFields["올린 사람, 업로드 날짜"]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        tap(search); search.typeText("No matching uploader")
+        XCTAssertTrue(app.staticTexts["조건에 맞는 사진이 없어요"].waitForExistence(timeout: 5))
+        capture(app, "flow-02-search-empty")
+        tap(app.buttons["검색과 필터 해제"])
+        tap(app.buttons["닫기"])
+        tap(app.buttons["채팅"])
+        XCTAssertTrue(app.staticTexts["[샘플 결과] 이 사진 같이 올려도 돼?"].waitForExistence(timeout: 10))
+        capture(app, "flow-03-chat-progress")
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "응답 완료")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 8), app.debugDescription)
+        tap(result)
+        let save = app.buttons["2장 저장"]
+        XCTAssertTrue(save.waitForExistence(timeout: 10), app.debugDescription)
+        capture(app, "flow-04-approved-result")
+        tap(app.buttons["모두 동의한 사진 공유"])
+        XCTAssertTrue(app.buttons["Copy"].waitForExistence(timeout: 10) || app.buttons["복사"].exists, app.debugDescription)
+        capture(app, "flow-05-native-share")
+        app.swipeDown()
+        if !save.isHittable { app.swipeDown() }
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        tap(save)
+        XCTAssertTrue(app.alerts.staticTexts["사진 2장을 저장했어요"].waitForExistence(timeout: 15), app.debugDescription)
+        capture(app, "flow-06-saved")
+        tap(app.alerts.buttons["확인"])
+        XCTAssertTrue(app.buttons["저장 완료"].exists)
+        XCTAssertFalse(app.buttons["저장 완료"].isEnabled)
+        capture(app, "flow-07-no-duplicate-save")
+        tap(app.buttons["완료"])
+        let review = app.buttons["확인하러가기"].firstMatch
+        if !review.isHittable { app.swipeDown() }
+        tap(review)
+        let photo = app.descendants(matching: .any).matching(identifier: "question.photo").firstMatch
+        XCTAssertTrue(photo.waitForExistence(timeout: 10))
+        for _ in 0..<3 {
+            photo.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.2))
+                .press(forDuration: 0.05, thenDragTo: photo.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.8)))
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        XCTAssertTrue(app.staticTexts["모든 사진에 의견을 남겼어요"].waitForExistence(timeout: 10), app.debugDescription)
+        capture(app, "flow-08-response-complete")
+        tap(app.buttons["완료"])
+        tap(review)
+        XCTAssertTrue(app.staticTexts["모든 사진에 의견을 남겼어요"].waitForExistence(timeout: 10))
+        capture(app, "flow-09-response-restored")
+    }
+
     func testLatestQuestionFlow() {
         continueAfterFailure = false
         let app = XCUIApplication()

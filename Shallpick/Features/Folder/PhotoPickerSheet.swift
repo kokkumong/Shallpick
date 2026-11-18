@@ -9,6 +9,7 @@ struct PhotoPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @State private var access: PhotoLibrary.Access?
     @State private var assets: PHFetchResult<PHAsset>?
     @State private var selectedIDs: [String] = []
@@ -36,6 +37,9 @@ struct PhotoPickerSheet: View {
                 let result = await PhotoLibrary.requestAccess()
                 access = result
                 if result != .denied { reload() }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { access = await PhotoLibrary.requestAccess(); reload() } }
             }
             .onChange(of: favoritesOnly) { reload() }
     }
@@ -136,6 +140,17 @@ struct PhotoPickerSheet: View {
     private var bottomBar: some View {
         HStack {
             filterButton
+            if access == .limited {
+                Button("허용 사진 변경") {
+                    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+                          let controller = scene.windows.first(where: \.isKeyWindow)?.rootViewController else { return }
+                    var presenter = controller
+                    while let next = presenter.presentedViewController { presenter = next }
+                    PHPhotoLibrary.shared().presentLimitedLibraryPicker(from: presenter) { _ in
+                        Task { @MainActor in reload() }
+                    }
+                }.font(.system(size: 13)).foregroundStyle(Color.black600)
+            }
             Spacer()
             CircleIconButton(icon: .iconClose, accessibilityLabel: "닫기") { dismiss() }
         }

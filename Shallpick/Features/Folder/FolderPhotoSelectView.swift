@@ -12,6 +12,8 @@ struct FolderPhotoSelectView: View {
     @State private var selectedIDs: [UUID] = []
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
+    @State private var likedIDs: Set<UUID> = []
+    @State private var errorMessage: String?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
 
@@ -29,11 +31,18 @@ struct FolderPhotoSelectView: View {
             .safeAreaInset(edge: .top, spacing: 0) { header }
             .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
             .animation(.snappy(duration: 0.2), value: isShowingFilterMenu)
+            .task {
+                do { likedIDs = try await PhotoFeedbackRepository.likedPhotoIDs(in: photos) }
+                catch { errorMessage = "좋아요 목록을 불러오지 못했어요. 다시 열어 주세요." }
+            }
+            .alert("사진 선택", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+                Button("확인", role: .cancel) {}
+            } message: { Text(errorMessage ?? "") }
     }
 
     @ViewBuilder
     private var content: some View {
-        let visible = photos.filtered(by: filters)
+        let visible = photos.filtered(by: filters, likedIDs: likedIDs)
         if visible.isEmpty {
             VStack(spacing: 10) {
                 Image(.otterEmpty)
@@ -66,6 +75,7 @@ struct FolderPhotoSelectView: View {
             if let index = selectedIDs.firstIndex(of: photo.id) {
                 selectedIDs.remove(at: index)
             } else {
+                guard selectedIDs.count < ChatRepository.maxPhotos else { errorMessage = "사진은 30장까지 고를 수 있어요"; return }
                 selectedIDs.append(photo.id)
             }
         } label: {
@@ -107,6 +117,8 @@ struct FolderPhotoSelectView: View {
                 onNext(selected)
                 dismiss()
             }
+            .disabled(selectedIDs.isEmpty)
+            .opacity(selectedIDs.isEmpty ? 0.4 : 1)
         }
         .frame(height: 52)
         .padding(.horizontal, 24)
@@ -121,6 +133,7 @@ struct FolderPhotoSelectView: View {
         HStack {
             PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
             Spacer()
+            Text("\(selectedIDs.count) / 30장").font(.system(size: 13)).foregroundStyle(Color.black600)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 33)

@@ -60,13 +60,16 @@ enum PhotoRepository {
     static func fetch(folderID: UUID) async throws -> [PhotoItem] {
         if DemoStore.shared.isActive { return DemoStore.shared.photos(in: folderID) }
         let client = try client
-        var photos: [PhotoItem] = try await client
-            .from("photos")
-            .select()
-            .eq("folder_id", value: folderID)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
+        var photos: [PhotoItem] = []
+        var offset = 0
+        while true {
+            let page: [PhotoItem] = try await client.from("photos").select()
+                .eq("folder_id", value: folderID).order("created_at", ascending: false)
+                .order("id", ascending: true).range(from: offset, to: offset + 499).execute().value
+            photos += page
+            if page.count < 500 { break }
+            offset += page.count
+        }
         guard !photos.isEmpty else { return [] }
 
         let urlByPath = try await signedURLs(for: photos.map(\.storagePath))
@@ -183,6 +186,26 @@ enum PhotoRepository {
             try await PhotoLibrary.addPhoto(data)
             onProgress(index + 1)
         }
+    }
+
+    static func download(_ photo: PhotoItem) async throws -> Data {
+        if DemoStore.shared.isActive, let url = photo.url, let image = UIImage(named: url.lastPathComponent), let data = image.jpegData(compressionQuality: 0.9) { return data }
+        return try await client.storage.from(bucket).download(path: photo.storagePath)
+    }
+
+    /// The same id is retained across retries, including lost storage/database responses.
+    static func uploadOne(_ asset: PHAsset, id: UUID, folderID: UUID) async throws {
+        let client = try client
+        let existing: [PhotoItem] = try await client.from("photos").select()
+            .eq("id", value: id).eq("folder_id", value: folderID).limit(1).execute().value
+        if !existing.isEmpty { return }
+        let path = "\(folderID.uuidString.lowercased())/\(id.uuidString.lowercased()).jpg"
+        if (try? await client.storage.from(bucket).download(path: path)) == nil {
+            guard let image = await PhotoLibrary.image(for: asset, maxSide: maxUploadSide),
+                  let data = await Self.jpegData(image) else { throw PhotoError.unreadableImage }
+            try await client.storage.from(bucket).upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
+        }
+        try await client.from("photos").insert(NewPhoto(id: id, folder_id: folderID, storage_path: path)).execute()
     }
 
     /// 내가 올린 사진만 지웁니다 (다른 사람 사진은 RLS 로 막힘). 줄을 먼저 지우고 파일을 지움

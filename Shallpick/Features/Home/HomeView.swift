@@ -59,8 +59,8 @@ struct HomeView: View {
                             onAskQuestion: { photos in path.append(.chat(folder, attaching: photos)) },
                             onOpenChat: { path.append(.chat(folder)) }
                         )
-                    case let .chat(folder, photos):
-                        ChatView(folder: folder, attaching: photos)
+                    case let .chat(folder, photos, messageID):
+                        ChatView(folder: folder, attaching: photos, focusMessageID: messageID, opensQuestion: messageID != nil)
                     }
                 }
         }
@@ -68,7 +68,7 @@ struct HomeView: View {
         .overlay {
             QuestionAlertOverlay(center: questionAlerts) { alert in
                 // 바로 응답하기: 그 폴더 → 채팅으로 바로 이동 (뒤로 가면 폴더 화면)
-                path = [.folder(alert.folder), .chat(alert.folder)]
+                path = [.folder(alert.folder), .chat(alert.folder, messageID: alert.id)]
             }
         }
         // 폴더 화면에서 사진을 올리고 돌아오면 표지도 새로
@@ -375,7 +375,7 @@ struct HomeView: View {
     private func updateReadState(from old: [HomeRoute], to new: [HomeRoute]) {
         var changed = false
         for route in [old.last, new.last] {
-            if case let .chat(folder, _)? = route {
+            if case let .chat(folder, _, _)? = route {
                 readState.markRead(folderID: folder.id)
                 chatUnreadCounts[folder.id] = 0
                 changed = true
@@ -385,7 +385,7 @@ struct HomeView: View {
     }
 
     private func isViewingChat(of folderID: UUID) -> Bool {
-        if case let .chat(folder, _)? = path.last { return folder.id == folderID }
+        if case let .chat(folder, _, _)? = path.last { return folder.id == folderID }
         return false
     }
 
@@ -474,7 +474,7 @@ enum HomeRoute: Hashable {
     case settings
     case folder(Folder)
     /// attaching: 폴더 화면의 수달로 고른 사진 (첫 메시지에 붙음)
-    case chat(Folder, attaching: [PhotoItem] = [])
+    case chat(Folder, attaching: [PhotoItem] = [], messageID: UUID? = nil)
 }
 
 private extension HomeView {
@@ -519,7 +519,7 @@ private extension HomeView {
                     onSelect: { item in
                         popover = nil
                         // 메뉴 닫힘 애니메이션과 같은 순간에 바꾸면 채팅까지 쌓이지 않아서 다음 차례에
-                        Task { path = [.folder(item.folder), .chat(item.folder)] }
+                        Task { path = [.folder(item.folder), .chat(item.folder, messageID: item.questionID)] }
                     }
                 )
                 // 하단 버튼(아래 여백 33 + 추가 45 + 간격 8 + 알림 45) 바로 위

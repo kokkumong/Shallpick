@@ -36,6 +36,10 @@ jobs:
           gem install xcodeproj -v 1.27.0 --user-install --no-document
           ruby scripts/configure-ui-tests.rb
           mkdir -p build/artifacts
+      - name: Verify approval rules
+        run: |
+          swiftc -swift-version 6 Shallpick/Features/Question/QuestionVote.swift Shallpick/Features/Question/QuestionApproval.swift tests/QuestionApprovalTests.swift -o /tmp/approval-tests
+          /tmp/approval-tests
       - name: Compile standard app without demo mode
         run: |
           set -o pipefail
@@ -79,6 +83,7 @@ jobs:
           BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
           xcrun simctl install "$DEVICE" "$APP"
           xcrun simctl privacy "$DEVICE" grant photos "$BUNDLE"
+          xcrun simctl privacy "$DEVICE" grant photos-add "$BUNDLE"
           xcrun simctl addmedia "$DEVICE" Shallpick/Assets.xcassets/DemoPhoto*.imageset/photo.jpg
           xcrun simctl io "$DEVICE" recordVideo --codec=h264 build/demo-flow.mov &
           VIDEO_PID=$!
@@ -89,8 +94,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= \
             -parallel-testing-enabled NO \
-            -only-testing:ShallpickUITests/DemoFlowTests/testAdditionalReviewScreens \
-            -only-testing:ShallpickUITests/DemoFlowTests/testReducedMotionFlow \
+            -only-testing:ShallpickUITests/DemoFlowTests/testSharingCompletion \
             test 2>&1 | tee build/ui-tests.log | xcbeautify
       - name: Export actual simulator screenshots
         if: always()
