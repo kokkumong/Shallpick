@@ -22,6 +22,8 @@ struct PhotoDetailView: View {
     @State private var isSaving = false
     @State private var notice: String?
     @State private var errorMessage: String?
+    /// 댓글 입력창에 키보드가 올라와 있는지
+    @FocusState private var isCommentFocused: Bool
 
     init(folder: Folder, photos: [PhotoItem], startID: UUID, avatarURL: URL? = nil) {
         self.folder = folder
@@ -40,9 +42,14 @@ struct PhotoDetailView: View {
         pager
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
-            .safeAreaInset(edge: .top, spacing: 0) { header }
+            // 키보드 바깥을 누르면 키보드 내림 (사진 두 번 탭·스크롤은 그대로)
+            .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
+            .safeAreaInset(edge: .top, spacing: 0) {
+                header
+                    .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                PhotoCommentInputBar(text: $draft, onSend: sendComment)
+                PhotoCommentInputBar(text: $draft, isFocused: $isCommentFocused, onSend: sendComment)
             }
             .overlay(alignment: .top) { noticeBanner }
             .overlay {
@@ -348,11 +355,25 @@ private struct PhotoDetailPage: View {
     /// 머리와 입력창 사이에 보이는 높이, 사진 높이 (사진을 가운데 두려고 잼)
     @State private var visibleHeight: CGFloat = 0
     @State private var photoHeight: CGFloat = 0
+    /// 사진이 가운데에서 얼마나 올라갔는지 (위로 민 거리)
+    @State private var scrolledUp: CGFloat = 0
 
-    /// 댓글이 없으면 사진을 보이는 칸 가운데에, 댓글이 생기면 위로 붙임
+    /// 0 = 사진이 가운데 (댓글은 흐리게), 1 = 사진이 맨 위로 올라감 (댓글 또렷하게)
+    private var commentReveal: CGFloat {
+        guard topSpace > 0 else { return 1 }
+        return min(max(scrolledUp / topSpace, 0), 1)
+    }
+
+    /// 사진은 늘 보이는 칸 가운데에서 시작
     private var topSpace: CGFloat {
-        guard feedback.comments.isEmpty, photoHeight > 0 else { return 0 }
+        guard photoHeight > 0 else { return 0 }
         return max(0, (visibleHeight - photoHeight) / 2)
+    }
+
+    /// 댓글이 있으면 짧아도 사진이 맨 위까지 올라갈 만큼 아래 칸을 채움 (20 은 맨 아래 여백)
+    private var belowPhotoMinHeight: CGFloat {
+        guard !feedback.comments.isEmpty, photoHeight > 0 else { return 0 }
+        return max(0, visibleHeight - photoHeight - 20)
     }
 
     var body: some View {
@@ -363,24 +384,31 @@ private struct PhotoDetailPage: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { photoHeight = $0 }
                         .padding(.top, topSpace)
 
-                    // 사진 아래 끝에 살짝 걸침 (540:10933)
-                    PhotoReactionRow(
-                        groups: feedback.reactionGroups,
-                        myUserID: myUserID,
-                        members: members,
-                        onToggle: onToggleReaction
-                    )
-                    .padding(.horizontal, 21)
-                    .padding(.top, -14)
+                    VStack(alignment: .leading, spacing: 0) {
+                        // 사진 아래 끝에 살짝 걸침 (540:10933)
+                        PhotoReactionRow(
+                            groups: feedback.reactionGroups,
+                            myUserID: myUserID,
+                            members: members,
+                            onToggle: onToggleReaction
+                        )
+                        .padding(.horizontal, 21)
+                        .padding(.top, -14)
 
-                    PhotoCommentList(
-                        comments: feedback.comments,
-                        members: members,
-                        myUserID: myUserID,
-                        onDelete: onDeleteComment
-                    )
-                    .padding(.horizontal, 24)
-                    .padding(.top, 14)
+                        PhotoCommentList(
+                            comments: feedback.comments,
+                            members: members,
+                            myUserID: myUserID,
+                            onDelete: onDeleteComment
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.top, 14)
+                        // 사진이 가운데 있을 땐 아래로 갈수록 흐려지고 살짝 번져서 사진에 눈이 가게,
+                        // 위로 밀수록 또렷해짐
+                        .blur(radius: (1 - commentReveal) * 2.5)
+                        .mask { CommentRevealMask(reveal: commentReveal) }
+                    }
+                    .frame(minHeight: belowPhotoMinHeight, alignment: .top)
                 }
                 .padding(.bottom, 20)
             }
@@ -390,6 +418,9 @@ private struct PhotoDetailPage: View {
             // 머리와 입력창은 안전 영역으로 빠져 있어서 containerSize 가 그 사이 높이
             .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
                 visibleHeight = height
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
+                scrolledUp = offset
             }
             .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
             .onChange(of: scrollToCommentID) { _, id in
@@ -442,6 +473,23 @@ private struct PhotoDetailPage: View {
             try? await Task.sleep(for: .seconds(0.7))
             guard burst == heartBurst else { return }
             withAnimation(.easeOut(duration: 0.25)) { isShowingHeart = false }
+        }
+    }
+}
+
+/// 댓글 목록에 씌우는 가림막. reveal 0 이면 위는 반쯤 보이고 아래로 갈수록 사라지며, 1 이면 전부 보임
+private struct CommentRevealMask: View {
+    let reveal: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [.black.opacity(0.55 + 0.45 * reveal), .black.opacity(reveal)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 140)
+            Color.black.opacity(reveal)
         }
     }
 }
@@ -708,6 +756,7 @@ private struct PhotoCommentRow: View {
 
 private struct PhotoCommentInputBar: View {
     @Binding var text: String
+    var isFocused: FocusState<Bool>.Binding
     let onSend: () -> Void
 
     private var canSend: Bool {
@@ -722,6 +771,7 @@ private struct PhotoCommentInputBar: View {
                 .lineLimit(1...5)
                 .frame(minHeight: 30)
                 .padding(.leading, 12)
+                .focused(isFocused)
                 .onChange(of: text) { _, newValue in
                     if newValue.count > PhotoFeedbackRepository.maxCommentLength {
                         text = String(newValue.prefix(PhotoFeedbackRepository.maxCommentLength))
