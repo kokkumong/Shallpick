@@ -14,7 +14,8 @@ final class DemoFlowTests: XCTestCase {
     }
 
     private func capture(_ app: XCUIApplication, _ name: String) {
-        Thread.sleep(forTimeInterval: 0.7)
+        // Allow native push/pop and sheet animations to finish before taking evidence.
+        Thread.sleep(forTimeInterval: 2)
         // Dismiss the simulator keyboard's first-run tutorial, not application content.
         if app.buttons["Continue"].exists && app.buttons["Continue"].isHittable {
             tap(app.buttons["Continue"])
