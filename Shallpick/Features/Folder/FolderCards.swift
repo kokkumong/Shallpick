@@ -1,52 +1,23 @@
 import SwiftUI
 
-/// 메인 화면 폴더 목록 (그리드 / 리스트)
-/// Figma: 메인_그리드_폴더버전 (246:5191), 메인_리스트 (246:5246)
+/// 메인 화면 폴더 목록 (리스트)
+/// Figma: 메인_수정 (570:13095)
 struct FolderCollectionView: View {
     let folders: [Folder]
-    let layout: FolderLayout
     var onSelect: (Folder) -> Void = { _ in }
     var onInvite: (Folder) -> Void = { _ in }
 
     var body: some View {
         ScrollView {
-            Group {
-                switch layout {
-                case .grid: grid
-                case .list: list
+            LazyVStack(spacing: 40) {
+                ForEach(folders) { folder in
+                    cell(folder) { FolderListCard(folder: folder) }
                 }
             }
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
-    }
-
-    /// 2열, 마지막 한 개는 가운데 (246:5204)
-    private var grid: some View {
-        LazyVStack(spacing: 40) {
-            ForEach(rows, id: \.first!.id) { row in
-                HStack(spacing: 30) {
-                    ForEach(row) { folder in
-                        cell(folder) { FolderGridCard(folder: folder) }
-                    }
-                }
-            }
-        }
-    }
-
-    private var list: some View {
-        LazyVStack(spacing: 40) {
-            ForEach(folders) { folder in
-                cell(folder) { FolderListCard(folder: folder) }
-            }
-        }
-    }
-
-    private var rows: [[Folder]] {
-        stride(from: 0, to: folders.count, by: 2).map {
-            Array(folders[$0 ..< min($0 + 2, folders.count)])
-        }
     }
 
     private func cell(_ folder: Folder, @ViewBuilder content: () -> some View) -> some View {
@@ -64,56 +35,7 @@ extension Folder {
     var memberSummary: String { memberNames.joined(separator: ", ") }
 }
 
-// MARK: - 그리드 카드
-
-/// 파란 폴더에 사진 3장이 꽂힌 모양 (148:8314, 150 × 165)
-struct FolderGridCard: View {
-    let folder: Folder
-
-    private let photoSize = CGSize(width: 73.87, height: 98.49)
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            FolderBackShape()
-                .fill(Color.brandBlue)
-                .frame(width: 150, height: 130.22)
-                .shallpickShadow()
-                .offset(y: 35)
-
-            photo(0, rotation: -4, center: CGPoint(x: 50.28, y: 62.7))
-            photo(1, rotation: 4, center: CGPoint(x: 99.28, y: 51.7))
-            photo(2, rotation: 0, center: CGPoint(x: 74.5, y: 84.28))
-
-            // 폴더 앞면 (148:8282)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(folder.name)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.folderTitle)
-                Text(folder.memberSummary)
-                    .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(Color.folderSubtitle)
-            }
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.top, 55)
-            .frame(width: 150, height: 89, alignment: .topLeading)
-            .background(
-                LinearGradient(colors: [.brandBlue, .folderBlueBottom], startPoint: .top, endPoint: .bottom),
-                in: RoundedRectangle(cornerRadius: 8)
-            )
-            .shadow(color: .black.opacity(0.25), radius: 5)
-            .offset(y: 76)
-        }
-        .frame(width: 150, height: 165.22, alignment: .topLeading)
-    }
-
-    private func photo(_ index: Int, rotation: Double, center: CGPoint) -> some View {
-        FolderPhoto(url: folder.coverPhotoURLs[safe: index], cornerRadius: 8)
-            .frame(width: photoSize.width, height: photoSize.height)
-            .rotationEffect(.degrees(rotation))
-            .position(center)
-    }
-}
+// MARK: - 폴더 그림 (질문 알림 카드)
 
 /// 폴더 뒷면 (탭이 달린 모양, 148:8281)
 nonisolated struct FolderBackShape: Shape {
@@ -207,7 +129,7 @@ struct FolderPhoto: View {
 }
 
 /// 사진 3장이 꽂힌 작은 폴더 (59 × 59, 앞면이 아래로 3pt 넘침)
-/// 메인 화면 그리드 카드(FolderGridCard)를 59/150 배로 줄인 배치. 질문 알림 카드에 씀
+/// 예전 메인 화면 그리드 카드(150 × 165)를 59/150 배로 줄인 배치. 질문 알림 카드에 씀
 /// Figma: 응답요청알람 (237:27204)
 struct MiniPhotoFolder: View {
     let photoURLs: [URL?]
@@ -274,12 +196,7 @@ extension Folder {
     }
 }
 
-#Preview("그리드") {
-    FolderCollectionView(folders: Folder.previews, layout: .grid)
-        .background(Color.black50)
-}
-
-#Preview("리스트") {
-    FolderCollectionView(folders: Folder.previews, layout: .list)
+#Preview {
+    FolderCollectionView(folders: Folder.previews)
         .background(Color.black50)
 }

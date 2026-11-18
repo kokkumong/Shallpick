@@ -7,8 +7,8 @@ struct HomeView: View {
     var onSignOut: () -> Void = {}
 
     @State private var profile: Profile?
-    @State private var layout: FolderLayout = .grid
-    @State private var isShowingAccountMenu = false
+    /// 지금 펼쳐진 메뉴 (알림 내역 / 프로필)
+    @State private var popover: HomePopover?
     @State private var folderDialog: FolderDialog?
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
@@ -29,7 +29,15 @@ struct HomeView: View {
     private enum FolderDialog: Equatable {
         case create
         case join(code: String)
+        case editNickname(current: String)
     }
+
+    fileprivate enum HomePopover {
+        case notifications
+        case account
+    }
+
+    private var isShowingNotifications: Bool { popover == .notifications }
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -82,21 +90,21 @@ struct HomeView: View {
                     avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
                     searchText: $searchText,
                     isSearching: $isSearching,
-                    hasNewNotifications: hasNewNotifications,
-                    onProfile: { isShowingAccountMenu.toggle() }
+                    onProfile: { toggle(.account) }
                 )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HomeBottomBar(
-                    layout: $layout,
+                    hasNewNotifications: hasNewNotifications,
+                    onNotifications: { toggle(.notifications) },
                     onCreateFolder: { folderDialog = .create },
                     onJoinWithCode: { folderDialog = .join(code: "") },
                     onJoinWithQR: { isShowingQRScanner = true }
                 )
             }
             .ignoresSafeArea(.keyboard)
-            .overlay { accountMenu }
-            .animation(.snappy(duration: 0.25), value: isShowingAccountMenu)
+            .overlay { popoverView }
+            .animation(.snappy(duration: 0.25), value: popover)
             .overlay { folderDialogView }
             .animation(.snappy(duration: 0.25), value: folderDialog)
             .fullScreenCover(isPresented: $isShowingQRScanner) {
@@ -127,8 +135,8 @@ struct HomeView: View {
                     folderDialog = .join(code: code)
                 }
             }
-            .task(id: isShowingAccountMenu) {
-                guard isShowingAccountMenu else { return }
+            .task(id: isShowingNotifications) {
+                guard isShowingNotifications else { return }
                 // 메뉴를 열면 빨간 점은 사라지고, 안 읽은 내역은 채팅을 볼 때까지 남음
                 readState.markMenuSeen()
                 hasNewNotifications = false
@@ -155,7 +163,6 @@ struct HomeView: View {
             // 결과가 없어도 목록(ScrollView)은 그대로 둬야 입력 중 키보드가 내려가지 않음
             FolderCollectionView(
                 folders: results,
-                layout: layout,
                 onSelect: { path.append(.folder($0)) },
                 onInvite: { invitingFolder = $0 }
             )
@@ -166,7 +173,6 @@ struct HomeView: View {
                         .transition(.opacity)
                 }
             }
-            .animation(.snappy(duration: 0.3), value: layout)
             .animation(.snappy(duration: 0.25), value: searchText)
         }
     }
@@ -211,7 +217,7 @@ struct HomeView: View {
         // 다른 멤버에게 보낸 질문은 알리지 않음
         if message.isQuestion, !message.recipientIDs.contains(userID) { return }
         // 프로필 메뉴의 내역·빨간 점
-        if isShowingAccountMenu {
+        if isShowingNotifications {
             Task { await reloadNotifications() }
         } else {
             hasNewNotifications = true
@@ -292,7 +298,7 @@ struct HomeView: View {
                     createdAt: .now.addingTimeInterval(-86_400), isUnread: false
                 ),
             ]
-            hasNewNotifications = !isShowingAccountMenu
+            hasNewNotifications = !isShowingNotifications
             return
         }
         #endif
@@ -301,7 +307,7 @@ struct HomeView: View {
             let items = try await NotificationHistory.fetch(folders: folders, userID: userID)
             notifications = items
             didFailNotifications = false
-            hasNewNotifications = !isShowingAccountMenu && readState.hasNew(in: items)
+            hasNewNotifications = !isShowingNotifications && readState.hasNew(in: items)
         } catch is CancellationError {
         } catch {
             print("[Notification] 내역 불러오기 실패:", error)
@@ -402,37 +408,57 @@ enum HomeRoute: Hashable {
 }
 
 private extension HomeView {
-    /// 프로필 버튼 바로 아래에 펼쳐지는 메뉴. 바깥을 누르면 닫힘
-    var accountMenu: some View {
-        ZStack(alignment: .topTrailing) {
-            if isShowingAccountMenu {
+    func toggle(_ target: HomePopover) {
+        popover = popover == target ? nil : target
+    }
+
+    /// 프로필 메뉴는 프로필 버튼 아래, 알림 내역은 알림 버튼 위에 펼쳐짐. 바깥을 누르면 닫힘
+    var popoverView: some View {
+        ZStack {
+            if popover != nil {
                 Color.black.opacity(0.06)
                     .ignoresSafeArea()
-                    .onTapGesture { isShowingAccountMenu = false }
+                    .onTapGesture { popover = nil }
                     .accessibilityLabel("메뉴 닫기")
                     .accessibilityAddTraits(.isButton)
                     .transition(.opacity)
+            }
 
+            if popover == .account {
                 AccountMenu(
-                    items: notifications,
-                    didFail: didFailNotifications,
-                    onSelect: { item in
-                        isShowingAccountMenu = false
-                        // 메뉴 닫힘 애니메이션과 같은 순간에 바꾸면 채팅까지 쌓이지 않아서 다음 차례에
-                        Task { path = [.folder(item.folder), .chat(item.folder)] }
+                    onEditProfile: {
+                        popover = nil
+                        folderDialog = .editNickname(current: profile?.nickname ?? "")
                     },
                     onSignOut: {
-                        isShowingAccountMenu = false
+                        popover = nil
                         onSignOut()
                     }
                 )
                 // 헤더(위 여백 11 + 높이 52) 바로 아래, 프로필 버튼 오른쪽 끝에 맞춤
                 .padding(.top, 71)
                 .padding(.trailing, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 .transition(.scale(scale: 0.85, anchor: .topTrailing).combined(with: .opacity))
             }
+
+            if popover == .notifications {
+                NotificationPanel(
+                    items: notifications,
+                    didFail: didFailNotifications,
+                    onSelect: { item in
+                        popover = nil
+                        // 메뉴 닫힘 애니메이션과 같은 순간에 바꾸면 채팅까지 쌓이지 않아서 다음 차례에
+                        Task { path = [.folder(item.folder), .chat(item.folder)] }
+                    }
+                )
+                // 하단 버튼(아래 여백 33 + 추가 45 + 간격 8 + 알림 45) 바로 위
+                .padding(.bottom, 141)
+                .padding(.trailing, 24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .transition(.scale(scale: 0.85, anchor: .bottomTrailing).combined(with: .opacity))
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
     @ViewBuilder
@@ -454,6 +480,12 @@ private extension HomeView {
                 await reloadFolders()
             }
             .id(code)
+            .transition(.opacity)
+        case let .editNickname(current):
+            FolderInputDialog(kind: .nickname, initialText: current, onCancel: { folderDialog = nil }) { nickname in
+                profile = try await ProfileRepository.updateNickname(nickname, userID: userID)
+                folderDialog = nil
+            }
             .transition(.opacity)
         case nil:
             EmptyView()

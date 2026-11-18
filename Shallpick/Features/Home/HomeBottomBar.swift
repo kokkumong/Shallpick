@@ -1,23 +1,25 @@
 import SwiftUI
 
-enum FolderLayout: CaseIterable {
-    case grid
-    case list
-}
-
-/// 메인 하단: Grid/List 전환 + 폴더 추가 (148:9639)
-/// 알림 내역은 상단 프로필 버튼 메뉴로 옮김
+/// 메인 하단 오른쪽: 알림 버튼 위에 폴더 추가 버튼 (Figma: 메인_수정 570:13364)
 struct HomeBottomBar: View {
-    @Binding var layout: FolderLayout
+    /// 알림 내역에 새로 쌓인 게 있으면 알림 버튼 오른쪽 위에 빨간 점
+    var hasNewNotifications = false
+    var onNotifications: () -> Void = {}
     var onCreateFolder: () -> Void = {}
     var onJoinWithCode: () -> Void = {}
     var onJoinWithQR: () -> Void = {}
 
     var body: some View {
-        HStack {
-            FolderLayoutPicker(selection: $layout)
-
-            Spacer()
+        VStack(spacing: 8) {
+            CircleIconButton(icon: .iconBell, accessibilityLabel: "알림", action: onNotifications)
+                .overlay(alignment: .topTrailing) {
+                    if hasNewNotifications {
+                        NotificationDot()
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .animation(.snappy(duration: 0.25), value: hasNewNotifications)
+                .accessibilityValue(hasNewNotifications ? "새 알림 있음" : "")
 
             Menu {
                 Button("새 폴더 만들기", systemImage: "folder.badge.plus", action: onCreateFolder)
@@ -29,7 +31,9 @@ struct HomeBottomBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("폴더 추가")
         }
+        .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.horizontal, 24)
+        .padding(.top, 24)
         .padding(.bottom, 33)
         .background {
             LinearGradient(
@@ -45,81 +49,20 @@ struct HomeBottomBar: View {
     }
 }
 
-/// Segment_Grid (148:9617)
-struct FolderLayoutPicker: View {
-    @Binding var selection: FolderLayout
-    @Namespace private var indicator
-
+/// 새 알림 표시 (인스타그램처럼 작은 빨간 점)
+struct NotificationDot: View {
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(FolderLayout.allCases, id: \.self) { layout in
-                Button {
-                    selection = layout
-                } label: {
-                    VStack(spacing: 3) {
-                        icon(for: layout)
-                        Text(title(for: layout))
-                            .font(.system(size: 10, weight: .semibold))
-                    }
-                    .foregroundStyle(selection == layout ? Color.black800 : Color.black600)
-                    .frame(width: 62, height: 39)
-                    .background {
-                        // 스위치처럼 선택한 쪽으로 동그라미가 미끄러져 감
-                        if selection == layout {
-                            Capsule()
-                                .fill(Color.blue50)
-                                .matchedGeometryEffect(id: "selected", in: indicator)
-                        }
-                    }
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selection == layout ? .isSelected : [])
-            }
-        }
-        .padding(3)
-        .background(.white, in: Capsule())
-        .floatingShadow()
-        .animation(.snappy(duration: 0.2), value: selection)
-    }
-
-    private func title(for layout: FolderLayout) -> String {
-        switch layout {
-        case .grid: "Grid"
-        case .list: "List"
-        }
-    }
-
-    @ViewBuilder
-    private func icon(for layout: FolderLayout) -> some View {
-        let cell: CGFloat = 7.442
-        let gap: CGFloat = 1.118
-        switch layout {
-        case .grid:
-            Grid(horizontalSpacing: gap, verticalSpacing: gap) {
-                GridRow { iconCell(width: cell); iconCell(width: cell) }
-                GridRow { iconCell(width: cell); iconCell(width: cell) }
-            }
-        case .list:
-            VStack(spacing: gap) {
-                iconCell(width: 16)
-                iconCell(width: 16)
-            }
-        }
-    }
-
-    private func iconCell(width: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: 1)
-            .strokeBorder(lineWidth: 1.5)
-            .frame(width: width, height: 7.442)
+        Circle()
+            .fill(Color.red)
+            .frame(width: 11, height: 11)
+            .overlay { Circle().stroke(.white, lineWidth: 2) }
     }
 }
 
 #Preview {
-    @Previewable @State var layout: FolderLayout = .grid
     VStack {
         Spacer()
-        HomeBottomBar(layout: $layout)
+        HomeBottomBar(hasNewNotifications: true)
     }
     .background(Color.black50)
 }

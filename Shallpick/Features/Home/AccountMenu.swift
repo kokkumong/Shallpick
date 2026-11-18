@@ -1,12 +1,44 @@
 import SwiftUI
 
-/// 상단 프로필 버튼을 누르면 펼쳐지는 메뉴: 알림 내역 → 구분선 → 로그아웃하기
+/// 상단 프로필 버튼을 누르면 펼쳐지는 메뉴: 프로필 수정 → 구분선 → 로그아웃하기
 struct AccountMenu: View {
+    var onEditProfile: () -> Void = {}
+    var onSignOut: () -> Void = {}
+
+    var body: some View {
+        VStack(spacing: 0) {
+            item("프로필 수정", color: .black800, action: onEditProfile)
+
+            Rectangle()
+                .fill(Color.black200)
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+
+            item("로그아웃하기", color: .red, action: onSignOut)
+        }
+        .frame(width: 200)
+        .popoverCard()
+    }
+
+    private func item(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(maxWidth: .infinity)
+                .frame(height: 56)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// 하단 알림 버튼을 누르면 펼쳐지는 알림 내역
+struct NotificationPanel: View {
     /// nil = 불러오는 중
     var items: [NotificationItem]?
     var didFail = false
     var onSelect: (NotificationItem) -> Void = { _ in }
-    var onSignOut: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,29 +52,9 @@ struct AccountMenu: View {
                 .accessibilityAddTraits(.isHeader)
 
             notifications
-
-            Rectangle()
-                .fill(Color.black200)
-                .frame(height: 1)
-                .padding(.horizontal, 16)
-
-            Button(action: onSignOut) {
-                Text("로그아웃하기")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 56)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
         .frame(width: 300)
-        // 그림자는 카드 모양에만 (글자에 번지지 않게)
-        .background {
-            RoundedRectangle(cornerRadius: 24)
-                .fill(.white)
-                .shallpickShadow(blur: 30)
-        }
+        .popoverCard()
     }
 
     @ViewBuilder
@@ -57,10 +69,10 @@ struct AccountMenu: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, 10)
             }
             .scrollIndicators(.hidden)
-            .frame(maxHeight: 380)
+            .frame(maxHeight: 420)
             .fixedSize(horizontal: false, vertical: true)
         } else {
             Group {
@@ -74,6 +86,17 @@ struct AccountMenu: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 88)
+        }
+    }
+}
+
+private extension View {
+    /// 흰 카드. 그림자는 카드 모양에만 (글자에 번지지 않게)
+    func popoverCard() -> some View {
+        background {
+            RoundedRectangle(cornerRadius: 24)
+                .fill(.white)
+                .shallpickShadow(blur: 30)
         }
     }
 }
@@ -104,9 +127,9 @@ private struct NotificationRow: View {
     }
 }
 
-#Preview {
+#Preview("알림") {
     let folders = Folder.previews
-    AccountMenu(items: [
+    NotificationPanel(items: [
         NotificationItem(
             id: "q1", folder: folders[0],
             kind: .question(text: "현서님이 사진 3장에 대한 질문을 올렸어요! 확인해주세요:)"),
@@ -129,4 +152,11 @@ private struct NotificationRow: View {
     .padding()
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(Color.black50)
+}
+
+#Preview("프로필") {
+    AccountMenu()
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black50)
 }
