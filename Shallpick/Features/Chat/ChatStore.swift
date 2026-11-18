@@ -109,6 +109,17 @@ final class ChatStore {
         deliver(message)
     }
 
+    func acceptSent(_ message: ChatMessage) { merge(message, confirmed: true) }
+
+    func loadMessage(_ id: UUID) async throws -> ChatMessage? {
+        guard !isPreview else { return messages.first { $0.id == id } }
+        guard let message = try await ChatRepository.fetchMessage(id: id, folderID: folder.id) else { return nil }
+        let photos = try await PhotoRepository.fetch(folderID: folder.id)
+        setPhotos(photos)
+        merge(message, confirmed: true)
+        return message
+    }
+
     func member(for userID: UUID) -> ChatMember? {
         members[userID]
     }

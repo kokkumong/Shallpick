@@ -36,10 +36,12 @@ enum PhotoRepository {
     enum PhotoError: LocalizedError {
         case unreadableImage
         case libraryDenied
+        case incompleteSave(Int)
 
         var errorDescription: String? {
             switch self {
             case .unreadableImage: "사진을 읽지 못했어요."
+            case let .incompleteSave(count): "사진 \(count)장을 저장하지 못했어요. 다시 시도해 주세요."
             case .libraryDenied: "사진을 저장하려면 설정에서 사진 추가를 허용해 주세요."
             }
         }
@@ -59,13 +61,16 @@ enum PhotoRepository {
     /// 폴더 사진 (최신 순), 보기용 서명 주소 포함
     static func fetch(folderID: UUID) async throws -> [PhotoItem] {
         let client = try client
-        var photos: [PhotoItem] = try await client
-            .from("photos")
-            .select()
-            .eq("folder_id", value: folderID)
-            .order("created_at", ascending: false)
-            .execute()
-            .value
+        var photos: [PhotoItem] = []
+        var offset = 0
+        while true {
+            let page: [PhotoItem] = try await client.from("photos").select()
+                .eq("folder_id", value: folderID).order("created_at", ascending: false)
+                .order("id", ascending: true).range(from: offset, to: offset + 499).execute().value
+            photos += page
+            if page.count < 500 { break }
+            offset += page.count
+        }
         guard !photos.isEmpty else { return [] }
 
         let urlByPath = try await signedURLs(for: photos.map(\.storagePath))
@@ -166,13 +171,27 @@ enum PhotoRepository {
 
     /// 폴더 사진 원본을 받아 기기 사진 보관함에 차례로 저장. 하나 끝날 때마다 onProgress(저장한 개수)
     static func saveToLibrary(_ photos: [PhotoItem], onProgress: (Int) -> Void = { _ in }) async throws {
-        guard await PhotoLibrary.requestAddAccess() else { throw PhotoError.libraryDenied }
-        let storage = try client.storage.from(bucket)
-        for (index, photo) in photos.enumerated() {
-            let data = try await storage.download(path: photo.storagePath)
-            try await PhotoLibrary.addPhoto(data)
-            onProgress(index + 1)
+        let result = try await PhotoExport.save(photos, onProgress: onProgress)
+        if !result.failed.isEmpty { throw PhotoError.incompleteSave(result.failed.count) }
+    }
+
+    static func download(_ photo: PhotoItem) async throws -> Data {
+        try await client.storage.from(bucket).download(path: photo.storagePath)
+    }
+
+    /// The same id is retained across retries, including lost storage/database responses.
+    static func uploadOne(_ asset: PHAsset, id: UUID, folderID: UUID) async throws {
+        let client = try client
+        let existing: [PhotoItem] = try await client.from("photos").select()
+            .eq("id", value: id).eq("folder_id", value: folderID).limit(1).execute().value
+        if !existing.isEmpty { return }
+        let path = "\(folderID.uuidString.lowercased())/\(id.uuidString.lowercased()).jpg"
+        if (try? await client.storage.from(bucket).download(path: path)) == nil {
+            guard let image = await PhotoLibrary.image(for: asset, maxSide: maxUploadSide),
+                  let data = await Self.jpegData(image) else { throw PhotoError.unreadableImage }
+            try await client.storage.from(bucket).upload(path, data: data, options: FileOptions(contentType: "image/jpeg"))
         }
+        try await client.from("photos").insert(NewPhoto(id: id, folder_id: folderID, storage_path: path)).execute()
     }
 
     /// 내가 올린 사진만 지웁니다 (다른 사람 사진은 RLS 로 막힘). 줄을 먼저 지우고 파일을 지움

@@ -42,6 +42,10 @@ struct QuestionRespondView: View {
     @FocusState private var isInputFocused: Bool
 
     @State private var errorMessage: String?
+    @State private var isLoading = true
+    @State private var loadFailed = false
+    @State private var isSendingPin = false
+    @State private var draftPinID = UUID()
 
     private struct DraftPin: Equatable {
         let photoID: UUID
@@ -62,7 +66,7 @@ struct QuestionRespondView: View {
     }
 
     private var allVoted: Bool {
-        photos.allSatisfy { votes[$0.id] != nil }
+        !photos.isEmpty && photos.allSatisfy { votes[$0.id] != nil }
     }
 
     var body: some View {
@@ -72,18 +76,24 @@ struct QuestionRespondView: View {
                     title: folder.name,
                     avatarURL: sender?.avatarURL.flatMap(URL.init(string:)),
                     subtitle: sender?.nickname ?? "",
-                    onDone: { dismiss() }
+                    onDone: { if !isVoting && !isSendingPin { dismiss() } }
                 )
 
                 GeometryReader { proxy in
                     content(in: proxy.size)
+                        .allowsHitTesting(!isLoading && !loadFailed && !isSendingPin)
+                        .overlay {
+                            if isLoading || isVoting { ProgressView(isVoting ? "의견 저장 중" : "불러오는 중").padding().background(.regularMaterial, in: Capsule()) }
+                            else if loadFailed { Button("답변 불러오기 다시 시도") { Task { await load() } }
+                                .padding().background(.regularMaterial, in: Capsule()) }
+                        }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .ignoresSafeArea(.keyboard)
 
             if draftPin != nil {
-                pinInputBar
+                pinInputBar.disabled(isSendingPin)
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -436,7 +446,7 @@ struct QuestionRespondView: View {
     }
 
     private func canPage(_ step: Int) -> Bool {
-        guard !isVoting else { return false }
+        guard !isVoting, !isLoading, !loadFailed, !isSendingPin else { return false }
         if step < 0 {
             return isShowingDone || index > 0
         }
@@ -465,14 +475,13 @@ struct QuestionRespondView: View {
     // MARK: - 좋아/싫어
 
     private func vote(_ vote: QuestionVote, photo: PhotoItem) {
-        guard !isVoting, currentPhoto?.id == photo.id else { return }
+        guard !isVoting, !isLoading, !loadFailed, !isSendingPin, currentPhoto?.id == photo.id else { return }
         isVoting = true
         cancelDraft()
         selectedPinID = nil
         pageStep = 1
         let votedIndex = index
         let previous = votes[photo.id]
-        votes[photo.id] = vote
 
         Task {
             do {
@@ -482,20 +491,22 @@ struct QuestionRespondView: View {
                     folderID: folder.id,
                     photoID: photo.id
                 )
+                votes[photo.id] = vote
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                    drag = reduceMotion ? .zero : CGSize(width: 0, height: vote == .dislike ? -900 : 900)
+                } completion: {
+                    showNextUnvoted(after: votedIndex)
+                }
             } catch {
                 print("[Question] 좋아/싫어 남기기 실패:", error)
                 votes[photo.id] = previous
+                isVoting = false
+                withAnimation(.snappy) { drag = .zero }
                 errorMessage = "의견을 남기지 못했어요. 다시 시도해 주세요."
             }
         }
 
-        // 실제 전환이 끝나면 다음 사진으로. 동작 줄이기에서는 이동 없이 바로 진행합니다.
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
-            drag = reduceMotion ? .zero : CGSize(width: 0, height: vote == .dislike ? -900 : 900)
-        } completion: {
-            guard isVoting, currentPhoto?.id == photo.id else { return }
-            showNextUnvoted(after: votedIndex)
-        }
+
     }
 
     /// 아직 의견을 안 남긴 다음 사진으로. 다 남겼으면 마무리 카드
@@ -518,6 +529,7 @@ struct QuestionRespondView: View {
     private func placeDraft(at location: CGPoint, in size: CGSize, photo: PhotoItem) {
         guard size.width > 0, size.height > 0 else { return }
         selectedPinID = nil
+        draftPinID = UUID()
         withAnimation(.snappy(duration: 0.2)) {
             drag = .zero
             draftPin = DraftPin(
@@ -531,7 +543,7 @@ struct QuestionRespondView: View {
     }
 
     private func cancelDraft() {
-        guard draftPin != nil else { return }
+        guard draftPin != nil, !isSendingPin else { return }
         draftPin = nil
         draftText = ""
         isInputFocused = false
@@ -539,9 +551,10 @@ struct QuestionRespondView: View {
 
     private func sendPin() {
         let body = draftText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let draft = draftPin, !body.isEmpty else { return }
+        guard let draft = draftPin, !body.isEmpty, !isSendingPin else { return }
+        isSendingPin = true
         let pin = QuestionPin(
-            id: UUID(),
+            id: draftPinID,
             messageID: message.id,
             photoID: draft.photoID,
             userID: myUserID ?? UUID(),
@@ -550,9 +563,7 @@ struct QuestionRespondView: View {
             body: String(body.prefix(QuestionResponseRepository.maxPinLength)),
             createdAt: .now
         )
-        pins.append(pin)
-        cancelDraft()
-        selectedPinID = pin.id
+
 
         Task {
             do {
@@ -565,10 +576,14 @@ struct QuestionRespondView: View {
                     y: pin.y,
                     body: pin.body
                 )
-                if let index = pins.firstIndex(where: { $0.id == pin.id }) { pins[index] = saved }
+                pins.removeAll { $0.id == saved.id }
+                pins.append(saved)
+                isSendingPin = false
+                cancelDraft()
+                selectedPinID = saved.id
             } catch {
                 print("[Question] 댓글 남기기 실패:", error)
-                pins.removeAll { $0.id == pin.id }
+                isSendingPin = false
                 errorMessage = "댓글을 남기지 못했어요. 다시 시도해 주세요."
             }
         }
@@ -590,7 +605,10 @@ struct QuestionRespondView: View {
     // MARK: - 불러오기
 
     private func load() async {
-        guard let myUserID else { return }
+        isLoading = true
+        loadFailed = false
+        defer { isLoading = false }
+        guard let myUserID else { loadFailed = true; return }
         do {
             async let loadedVotes = QuestionResponseRepository.fetchVotes(messageID: message.id, userID: myUserID)
             async let loadedPins = QuestionResponseRepository.fetchPins(messageID: message.id, userID: myUserID)
@@ -601,13 +619,14 @@ struct QuestionRespondView: View {
             }
             let known = Set(pins.map(\.id))
             pins = (pinList.filter { !known.contains($0.id) } + pins).sorted { $0.createdAt < $1.createdAt }
+            isShowingDone = allVoted
             // 처음엔 아직 의견을 안 남긴 첫 사진부터
             if let first = photos.firstIndex(where: { votes[$0.id] == nil }), index == 0 {
                 index = first
             }
         } catch is CancellationError {
         } catch {
-            print("[Question] 응답 불러오기 실패:", error)
+            loadFailed = true
         }
     }
 }

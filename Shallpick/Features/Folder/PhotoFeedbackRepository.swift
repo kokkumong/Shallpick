@@ -70,6 +70,19 @@ enum PhotoFeedbackRepository {
             .value
     }
 
+    static func likedPhotoIDs(in photos: [PhotoItem]) async throws -> Set<UUID> {
+        guard let me = PhotoRepository.currentUserID else { throw FolderRepository.FolderError.notConfigured }
+        var result: Set<UUID> = []
+        // One reaction per user/photo/emoji; chunks stay below the API row cap.
+        for start in stride(from: 0, to: photos.count, by: 100) {
+            let ids = photos[start..<min(start + 100, photos.count)].map(\.id)
+            let rows: [PhotoReaction] = try await client.from("photo_reactions").select()
+                .eq("user_id", value: me).eq("emoji", value: heart).in("photo_id", values: ids).execute().value
+            result.formUnion(rows.map(\.photoID))
+        }
+        return result
+    }
+
     /// 댓글 (오래된 것 → 최신 순)
     static func fetchComments(photoID: UUID) async throws -> [PhotoComment] {
         try await client

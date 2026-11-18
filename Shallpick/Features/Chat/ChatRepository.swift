@@ -148,6 +148,12 @@ enum ChatRepository {
         return latestFirst.reversed()
     }
 
+    static func fetchMessage(id: UUID, folderID: UUID) async throws -> ChatMessage? {
+        let rows: [ChatMessage] = try await client.from("messages").select()
+            .eq("id", value: id).eq("folder_id", value: folderID).limit(1).execute().value
+        return rows.first
+    }
+
     static func fetchMembers(folderID: UUID) async throws -> [ChatMember] {
         try await client
             .rpc("folder_member_profiles", params: ["target_folder_id": folderID])
@@ -164,7 +170,9 @@ enum ChatRepository {
         photoIDs: [UUID] = [],
         recipientIDs: [UUID] = []
     ) async throws -> ChatMessage {
-        try await client
+        // Check the stable client id before retrying an uncertain network result.
+        if let existing = try await fetchMessage(id: id, folderID: folderID) { return existing }
+        return try await client
             .from("messages")
             .insert(NewMessage(
                 id: id,

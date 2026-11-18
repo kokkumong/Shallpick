@@ -8,18 +8,20 @@ struct QuestionComposeView: View {
     /// 사진 보기에서 휴지통으로 뺀 사진 (폴더 화면의 선택에서도 빼도록)
     var onRemovePhoto: (PhotoItem) -> Void = { _ in }
     /// 보내고 나면 불림 (닫기는 이 화면이 함)
-    var onSent: () -> Void = {}
+    var onSent: (ChatMessage) -> Void = { _ in }
 
     init(
         folder: Folder,
         photos: [PhotoItem],
         onRemovePhoto: @escaping (PhotoItem) -> Void = { _ in },
-        onSent: @escaping () -> Void = {}
+        initialQuestion: String = "",
+        onSent: @escaping (ChatMessage) -> Void = { _ in }
     ) {
         self.folder = folder
         self.onRemovePhoto = onRemovePhoto
         self.onSent = onSent
         _photos = State(initialValue: photos)
+        _question = State(initialValue: initialQuestion)
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -32,6 +34,10 @@ struct QuestionComposeView: View {
     @State private var members: [ChatMember]?
     @State private var recipients: Set<UUID> = []
     @State private var isSending = false
+    @State private var sendID = UUID()
+    @State private var sentPayload: String?
+    @State private var membersFailed = false
+    @State private var isInviting = false
     @State private var errorMessage: String?
     @FocusState private var isQuestionFocused: Bool
     /// 수달이 살펴본 사진 특징 (사진 id 별, 한 번 본 사진은 다시 안 봄)
@@ -47,7 +53,7 @@ struct QuestionComposeView: View {
     }
 
     private var canSend: Bool {
-        !trimmedQuestion.isEmpty && !recipients.isEmpty && !isSending
+        !trimmedQuestion.isEmpty && !recipients.isEmpty && !photos.isEmpty && photos.count <= ChatRepository.maxPhotos && !isSending && !membersFailed
     }
 
     /// 아래 "질문 보내기" 줄 높이 (위 24 + 버튼 48 + 아래 33)
@@ -57,7 +63,7 @@ struct QuestionComposeView: View {
         // 키보드가 올라와도 "질문 보내기" 는 아래에 그대로 둠 (키보드에 가려짐).
         // 입력칸이 화면 위쪽이라 내용도 키보드를 피하지 않아도 가리지 않음
         ZStack(alignment: .bottom) {
-            content
+            content.disabled(isSending)
             sendBar
         }
         .ignoresSafeArea(.keyboard)
@@ -89,6 +95,10 @@ struct QuestionComposeView: View {
                     .presentationDragIndicator(.hidden)
             }
         }
+        .sheet(isPresented: $isInviting, onDismiss: { Task { await loadMembers() } }) {
+            FolderInviteSheet(folder: folder)
+        }
+        .interactiveDismissDisabled(isSending)
         .task { await loadMembers() }
         .task(id: photos.map(\.id)) { await analyzePhotos() }
     }
@@ -117,6 +127,10 @@ struct QuestionComposeView: View {
                             onUndo: undoPick
                         )
                         .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    }
+                    if photos.count > ChatRepository.maxPhotos {
+                        Text("질문에는 사진을 30장까지 첨부할 수 있어요. 사진 묶음을 눌러 줄여 주세요.")
+                            .font(.system(size: 14)).foregroundStyle(Color.black600)
                     }
                     questionField
                     recipientList
@@ -207,7 +221,7 @@ struct QuestionComposeView: View {
 
     private var header: some View {
         HStack {
-            CircleIconButton(icon: .iconClose, accessibilityLabel: "닫기") { dismiss() }
+            CircleIconButton(icon: .iconClose, accessibilityLabel: "닫기") { dismiss() }.disabled(isSending)
             Spacer()
         }
         .overlay {
@@ -259,12 +273,16 @@ struct QuestionComposeView: View {
     private var recipientList: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("보낼 사람 선택")
+            if membersFailed {
+                Button("참여자를 불러오지 못했어요 · 다시 시도") { Task { await loadMembers() } }
+                    .font(.system(size: 14)).foregroundStyle(Color.black600)
+            }
             switch members {
             case nil:
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 52)
-            case let members? where members.isEmpty:
-                Text("아직 폴더에 다른 사람이 없어요.\n폴더 이름을 눌러 친구를 초대해 보세요.")
+            case let members? where members.isEmpty && !membersFailed:
+                Button("친구를 초대하고 질문 보내기") { isInviting = true }
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.black400)
                     .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
@@ -322,8 +340,11 @@ struct QuestionComposeView: View {
     // MARK: - 데이터
 
     private func loadMembers() async {
+        membersFailed = false
+        members = nil
         guard SupabaseManager.client != nil else {
             members = []
+            membersFailed = true
             return
         }
         do {
@@ -331,10 +352,11 @@ struct QuestionComposeView: View {
             members = try await ChatRepository.fetchMembers(folderID: folder.id)
                 .filter { $0.userID != me }
                 .sorted { $0.nickname < $1.nickname }
+            recipients.formIntersection(Set((members ?? []).map(\.userID)))
         } catch is CancellationError {
         } catch {
             members = []
-            errorMessage = error.localizedDescription
+            membersFailed = true
         }
     }
 
@@ -343,14 +365,17 @@ struct QuestionComposeView: View {
         isSending = true
         defer { isSending = false }
         do {
-            _ = try await ChatRepository.send(
-                id: UUID(),
+            let payload = trimmedQuestion + photos.map { $0.id.uuidString }.joined() + recipients.map(\.uuidString).sorted().joined()
+            if let previous = sentPayload, previous != payload { sendID = UUID() }
+            sentPayload = payload
+            let saved = try await ChatRepository.send(
+                id: sendID,
                 folderID: folder.id,
                 body: String(trimmedQuestion.prefix(ChatRepository.maxBodyLength)),
-                photoIDs: Array(photos.map(\.id).prefix(ChatRepository.maxPhotos)),
+                photoIDs: photos.map(\.id),
                 recipientIDs: Array(recipients)
             )
-            onSent()
+            onSent(saved)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

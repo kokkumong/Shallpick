@@ -9,6 +9,7 @@ struct QuestionResultView: View {
     let photos: [PhotoItem]
     let members: [UUID: ChatMember]
     var myAvatarURL: URL?
+    var onQuestionSent: ((ChatMessage) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var currentID: UUID?
@@ -17,6 +18,28 @@ struct QuestionResultView: View {
     @State private var selectedPinID: UUID?
     @State private var isLoading = true
     @State private var loadFailed = false
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var availablePhotos: [PhotoItem] = []
+    @State private var isExporting = false
+    @State private var savedIDs: Set<UUID> = []
+    @State private var shareFiles: PhotoShareFiles?
+    @State private var pendingCleanup: PhotoShareFiles?
+    @State private var notice: String?
+    @State private var isReasking = false
+    @State private var resentMessage: ChatMessage?
+
+    private var approval: QuestionApproval {
+        QuestionApproval(messageID: message.id, recipientIDs: message.recipientIDs,
+                         photoIDs: message.photoIDs, votes: votes)
+    }
+    private var approvedPhotos: [PhotoItem] {
+        let ids = Set(approval.approvedPhotoIDs)
+        let byID = Dictionary(uniqueKeysWithValues: availablePhotos.map { ($0.id, $0) })
+        return message.photoIDs.filter { ids.contains($0) }.compactMap { byID[$0] }
+    }
+    private var unsavedPhotos: [PhotoItem] { approvedPhotos.filter { !savedIDs.contains($0.id) } }
+
 
     private var currentIndex: Int {
         photos.firstIndex { $0.id == currentID } ?? 0
@@ -78,13 +101,37 @@ struct QuestionResultView: View {
                 .refreshable { await load() }
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) { exportBar }
         .background(Color.black50)
         .toolbar(.hidden, for: .navigationBar)
-        .animation(.snappy(duration: 0.2), value: selectedPinID)
-        .animation(.snappy(duration: 0.2), value: currentID)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: selectedPinID)
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: currentID)
         .onAppear { if currentID == nil { currentID = photos.first?.id } }
         .onChange(of: currentID) { selectedPinID = nil }
-        .task { await load() }
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await load()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(5)) } catch { break }
+                if !isExporting { await load() }
+            }
+        }
+        .sheet(item: $shareFiles, onDismiss: cleanupShare) { files in
+            PhotoShareSheet(files: files) { shareFiles = nil }
+        }
+        .fullScreenCover(isPresented: $isReasking, onDismiss: {
+            if let resentMessage {
+                onQuestionSent?(resentMessage)
+                dismiss()
+            }
+        }) {
+            QuestionComposeView(folder: folder, photos: availablePhotos, initialQuestion: message.body) { saved in
+                resentMessage = saved
+            }
+        }
+        .alert("사진 공유", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+            Button("확인", role: .cancel) {}
+        } message: { Text(notice ?? "") }
     }
 
     // MARK: - 사진 (좌우로 넘기기)
@@ -147,17 +194,28 @@ struct QuestionResultView: View {
     private func move(_ step: Int) {
         let next = currentIndex + step
         guard photos.indices.contains(next) else { return }
-        withAnimation(.snappy) { currentID = photos[next].id }
+        withAnimation(reduceMotion ? nil : .snappy) { currentID = photos[next].id }
     }
 
     // MARK: - 좋아 / 싫어
 
     private func voteSection(photo: PhotoItem) -> some View {
-        let photoVotes = votes.filter { $0.photoID == photo.id }
+        let photoVotes = votes.filter { $0.photoID == photo.id && (message.recipientIDs.isEmpty || approval.recipientIDs.contains($0.userID)) }
         return VStack(spacing: 0) {
             voteRow(.like, voters: photoVotes.filter { $0.vote == .like }.map(\.userID))
             Divider().overlay(Color.black200)
             voteRow(.dislike, voters: photoVotes.filter { $0.vote == .dislike }.map(\.userID))
+            if !message.recipientIDs.isEmpty {
+                Divider().overlay(Color.black200)
+                let waiting = approval.pending(for: photo.id).sorted { name(of: $0) < name(of: $1) }
+                Text(waiting.isEmpty ? "모두 답변했어요" : "답변 대기: " + waiting.map(name(of:)).joined(separator: ", "))
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Color.black600)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 14)
+            }
+            if !availablePhotos.contains(where: { $0.id == photo.id }) {
+                Text("이 사진은 삭제되었거나 더 이상 볼 수 없어요")
+                    .font(.system(size: 13)).foregroundStyle(Color.black600).padding(.bottom, 12)
+            }
         }
         .padding(.horizontal, 16)
         .background {
@@ -265,22 +323,108 @@ struct QuestionResultView: View {
         members[userID]?.nickname ?? "샬픽 사용자"
     }
 
+    private var exportBar: some View {
+        VStack(spacing: 10) {
+            if !isLoading && !loadFailed && availablePhotos.count < message.photoIDs.count {
+                Text("요청한 사진 중 \(message.photoIDs.count - availablePhotos.count)장은 더 이상 볼 수 없어요")
+                    .font(.system(size: 12)).foregroundStyle(Color.black600)
+            }
+            if message.recipientIDs.isEmpty {
+                Button("받을 사람을 정해 다시 요청하기") { isReasking = true }
+                    .font(.system(size: 14, weight: .semibold))
+                    .disabled(availablePhotos.isEmpty || isLoading || loadFailed)
+                Text("이 질문에는 받을 사람이 지정되지 않았어요")
+                    .font(.system(size: 12)).foregroundStyle(Color.black600)
+            } else {
+                Text(loadFailed ? "최신 답변을 확인한 뒤 저장할 수 있어요" : approvedPhotos.isEmpty ? "모두 ‘좋아’라고 답한 사진을 기다리고 있어요" : "모두 좋아요 \(approvedPhotos.count)장")
+                    .font(.system(size: 13, weight: .medium)).foregroundStyle(Color.black600)
+                HStack(spacing: 12) {
+                    Button { Task { await export(share: false) } } label: {
+                        HStack(spacing: 8) {
+                            if isExporting { ProgressView().tint(.white) }
+                            Text(!approvedPhotos.isEmpty && unsavedPhotos.isEmpty ? "저장 완료" : "\(unsavedPhotos.count)장 저장")
+                        }
+                        .font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(Color.black800, in: Capsule())
+                    }
+                    .buttonStyle(ShallpickPressStyle())
+                    .disabled(unsavedPhotos.isEmpty || isLoading || loadFailed || isExporting)
+                    .opacity(unsavedPhotos.isEmpty || loadFailed ? 0.4 : 1)
+                    Button { Task { await export(share: true) } } label: {
+                        Image(systemName: "square.and.arrow.up").font(.system(size: 20, weight: .medium))
+                            .frame(width: 48, height: 48).background(.white, in: Circle())
+                    }
+                    .buttonStyle(ShallpickPressStyle()).accessibilityLabel("모두 동의한 사진 공유")
+                    .disabled(approvedPhotos.isEmpty || isLoading || loadFailed || isExporting)
+                    .opacity(approvedPhotos.isEmpty || loadFailed ? 0.4 : 1)
+                }
+            }
+        }
+        .foregroundStyle(Color.black800).padding(.horizontal, 24).padding(.vertical, 12)
+        .background { BottomFade() }
+    }
+
+    private func cleanupShare() {
+        pendingCleanup?.cleanup()
+        pendingCleanup = nil
+    }
+
+    private func export(share: Bool) async {
+        guard !isExporting, !isLoading, !loadFailed else { return }
+        let previouslyApproved = approvedPhotos.map(\.id)
+        isExporting = true
+        defer { isExporting = false }
+        do {
+            guard try await ChatRepository.fetchMessage(id: message.id, folderID: folder.id) != nil else {
+                notice = "질문이 삭제되었거나 접근할 수 없어요."
+                loadFailed = true
+                return
+            }
+            async let freshVotes = QuestionResponseRepository.fetchVotes(messageID: message.id)
+            async let freshPhotos = PhotoRepository.fetch(folderID: folder.id)
+            let (records, items) = try await (freshVotes, freshPhotos)
+            votes = records
+            availablePhotos = items.filter { message.photoIDs.contains($0.id) }
+            guard previouslyApproved == approvedPhotos.map(\.id) else {
+                notice = "답변 또는 사진이 바뀌었어요. 변경된 대상을 확인하고 다시 눌러 주세요."
+                return
+            }
+            let targets = share ? approvedPhotos : unsavedPhotos
+            guard !targets.isEmpty else { return }
+            if share {
+                let files = try await PhotoExport.prepareShare(targets)
+                pendingCleanup = files
+                shareFiles = files
+            } else {
+                let result = try await PhotoExport.save(targets)
+                savedIDs.formUnion(result.succeeded)
+                notice = result.failed.isEmpty ? "사진 \(result.succeeded.count)장을 저장했어요" : "\(result.succeeded.count)장 저장, \(result.failed.count)장 실패. 저장 버튼을 누르면 남은 사진만 다시 시도해요."
+            }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
     // MARK: - 불러오기
 
     private func load() async {
+        guard !isExporting else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             async let loadedVotes = QuestionResponseRepository.fetchVotes(messageID: message.id)
             async let loadedPins = QuestionResponseRepository.fetchPins(messageID: message.id)
+            async let loadedPhotos = PhotoRepository.fetch(folderID: folder.id)
             let (voteList, pinList) = try await (loadedVotes, loadedPins)
+            availablePhotos = try await loadedPhotos.filter { message.photoIDs.contains($0.id) }
             votes = voteList
             pins = pinList
             loadFailed = false
         } catch is CancellationError {
         } catch {
             print("[Question] 질문 결과 불러오기 실패:", error)
-            loadFailed = votes.isEmpty && pins.isEmpty
+            loadFailed = true
         }
     }
 }
