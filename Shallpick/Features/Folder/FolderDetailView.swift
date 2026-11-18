@@ -528,12 +528,17 @@ private struct PhotoGrid: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @SceneStorage("folder.photoGrid.columns") private var columnCount = 4
-    @State private var pinchStartColumns: Int?
     @State private var visiblePhotoID: UUID?
-    @GestureState private var isPinching = false
+    @GestureState private var magnification: CGFloat = 1
+
+    // 손을 뗄 때만 기준 열 수를 저장합니다. 조절 중 레이아웃이 바뀌어도
+    // 같은 핀치의 시작 기준이 달라지지 않게 합니다.
+    private var displayedColumns: Int {
+        min(max(Int((CGFloat(columnCount) / max(magnification, 0.1)).rounded()), 2), 6)
+    }
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: columnCount)
+        Array(repeating: GridItem(.flexible(), spacing: 10), count: displayedColumns)
     }
 
     var body: some View {
@@ -547,24 +552,20 @@ private struct PhotoGrid: View {
             .scrollTargetLayout()
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
-            .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: columnCount)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: displayedColumns)
         }
         .scrollIndicators(.hidden)
         .scrollPosition(id: $visiblePhotoID, anchor: .top)
         .simultaneousGesture(
             MagnifyGesture()
-                .updating($isPinching) { _, active, _ in active = true }
-                .onChanged { value in
-                    if pinchStartColumns == nil { pinchStartColumns = columnCount }
-                    let start = pinchStartColumns ?? columnCount
-                    setColumns(Int((Double(start) / max(value.magnification, 0.1)).rounded()))
+                .updating($magnification) { value, scale, _ in scale = value.magnification }
+                .onEnded { value in
+                    setColumns(Int((CGFloat(columnCount) / max(value.magnification, 0.1)).rounded()))
                 }
-                .onEnded { _ in pinchStartColumns = nil }
         )
-        .onChange(of: isPinching) { _, active in if !active { pinchStartColumns = nil } }
-        .sensoryFeedback(.selection, trigger: columnCount)
+        .sensoryFeedback(.selection, trigger: displayedColumns)
         .accessibilityIdentifier("folder.photoGrid")
-        .accessibilityValue("\(columnCount)열")
+        .accessibilityValue("\(displayedColumns)열")
         .accessibilityHint("두 손가락으로 확대하거나 축소해 사진 크기를 바꿀 수 있어요")
         .accessibilityAdjustableAction { direction in
             switch direction {
