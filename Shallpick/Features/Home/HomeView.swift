@@ -57,10 +57,11 @@ struct HomeView: View {
                             avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
                             unreadCount: chatUnreadCounts[folder.id] ?? 0,
                             onAskQuestion: { photos in path.append(.chat(folder, attaching: photos)) },
-                            onOpenChat: { path.append(.chat(folder)) }
+                            onOpenChat: { path.append(.chat(folder)) },
+                            onQuestionSent: { message in path.append(.chat(folder, messageID: message.id, showQuestion: false)) }
                         )
-                    case let .chat(folder, photos, messageID):
-                        ChatView(folder: folder, attaching: photos, focusMessageID: messageID, opensQuestion: messageID != nil)
+                    case let .chat(folder, photos, messageID, showQuestion):
+                        ChatView(folder: folder, attaching: photos, focusMessageID: messageID, opensQuestion: showQuestion && messageID != nil)
                     }
                 }
         }
@@ -375,7 +376,7 @@ struct HomeView: View {
     private func updateReadState(from old: [HomeRoute], to new: [HomeRoute]) {
         var changed = false
         for route in [old.last, new.last] {
-            if case let .chat(folder, _, _)? = route {
+            if case let .chat(folder, _, _, _)? = route {
                 readState.markRead(folderID: folder.id)
                 chatUnreadCounts[folder.id] = 0
                 changed = true
@@ -385,7 +386,7 @@ struct HomeView: View {
     }
 
     private func isViewingChat(of folderID: UUID) -> Bool {
-        if case let .chat(folder, _, _)? = path.last { return folder.id == folderID }
+        if case let .chat(folder, _, _, _)? = path.last { return folder.id == folderID }
         return false
     }
 
@@ -474,7 +475,7 @@ enum HomeRoute: Hashable {
     case settings
     case folder(Folder)
     /// attaching: 폴더 화면의 수달로 고른 사진 (첫 메시지에 붙음)
-    case chat(Folder, attaching: [PhotoItem] = [], messageID: UUID? = nil)
+    case chat(Folder, attaching: [PhotoItem] = [], messageID: UUID? = nil, showQuestion: Bool = true)
 }
 
 private extension HomeView {

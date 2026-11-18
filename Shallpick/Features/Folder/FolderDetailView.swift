@@ -13,6 +13,7 @@ struct FolderDetailView: View {
     var onAskQuestion: (([PhotoItem]) -> Void)?
     /// 채팅 버튼. 주면 밖(HomeView 의 내비게이션 경로)에서 채팅을 열고, 없으면 이 화면에서 엽니다.
     var onOpenChat: (() -> Void)?
+    var onQuestionSent: ((ChatMessage) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @Namespace private var photoNamespace
@@ -46,13 +47,15 @@ struct FolderDetailView: View {
     @State private var pendingUploads: [(asset: PHAsset, id: UUID)] = []
     @State private var failedSaves: [PhotoItem] = []
     @State private var sentQuestionID: UUID?
+    @State private var sentQuestion: ChatMessage?
 
     private var visiblePhotos: [PhotoItem] {
-        photos.filtered(by: filters, likedIDs: likedIDs).filter { photo in
-            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            guard !query.isEmpty else { return true }
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd"
+        let filtered = photos.filtered(by: filters, likedIDs: likedIDs)
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return filtered }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return filtered.filter { photo in
             let date = formatter.string(from: photo.createdAt)
             let korean = photo.createdAt.formatted(.dateTime.locale(Locale(identifier: "ko_KR")).year().month().day())
             return [memberNames[photo.uploaderID] ?? "", date, date.replacingOccurrences(of: "-", with: "."), korean]
@@ -79,7 +82,8 @@ struct FolderDetailView: View {
         photos: [PhotoItem] = [],
         onSearch: @escaping () -> Void = {},
         onAskQuestion: (([PhotoItem]) -> Void)? = nil,
-        onOpenChat: (() -> Void)? = nil
+        onOpenChat: (() -> Void)? = nil,
+        onQuestionSent: ((ChatMessage) -> Void)? = nil
     ) {
         self.folder = folder
         self.avatarURL = avatarURL
@@ -87,6 +91,7 @@ struct FolderDetailView: View {
         self.onSearch = onSearch
         self.onAskQuestion = onAskQuestion
         self.onOpenChat = onOpenChat
+        self.onQuestionSent = onQuestionSent
         _photos = State(initialValue: photos)
     }
 
@@ -126,7 +131,8 @@ struct FolderDetailView: View {
                     folder: folder,
                     photos: visiblePhotos,
                     startID: photo.id,
-                    avatarURL: avatarURL
+                    avatarURL: avatarURL,
+                    onQuestionSent: onQuestionSent
                 )
                 .modifier(PhotoZoomTransition(photoID: photo.id, namespace: photoNamespace))
             }
@@ -159,13 +165,15 @@ struct FolderDetailView: View {
                 }
             }
             .fullScreenCover(isPresented: $isShowingQuestionCompose, onDismiss: {
-                if sentQuestionID != nil { chatAttachments = []; isShowingChat = true }
+                if let sentQuestion, let onQuestionSent { onQuestionSent(sentQuestion) }
+                else if sentQuestionID != nil { chatAttachments = []; isShowingChat = true }
             }) {
                 QuestionComposeView(
                     folder: folder,
                     photos: selectedPhotos,
                     onRemovePhoto: { photo in selection?.remove(photo.id) },
                     onSent: { message in
+                        sentQuestion = message
                         sentQuestionID = message.id
                         selection = nil
                         showNotice("질문을 보냈어요")
@@ -484,7 +492,8 @@ struct FolderDetailView: View {
                     OtterButton(accessibilityLabel: "고른 사진으로 질문 보내기") {
                         guard !selectedPhotos.isEmpty else { return }
                         isShowingFilterMenu = false
-                        sentQuestionID = nil
+                        sentQuestion = nil
+                    sentQuestionID = nil
                     isShowingQuestionCompose = true
                     }
                     .transition(.opacity)

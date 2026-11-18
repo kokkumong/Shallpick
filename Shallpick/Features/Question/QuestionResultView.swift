@@ -318,6 +318,10 @@ struct QuestionResultView: View {
 
     private var exportBar: some View {
         VStack(spacing: 10) {
+            if !isLoading && !loadFailed && availablePhotos.count < message.photoIDs.count {
+                Text("요청한 사진 중 \(message.photoIDs.count - availablePhotos.count)장은 더 이상 볼 수 없어요")
+                    .font(.system(size: 12)).foregroundStyle(Color.black600)
+            }
             if message.recipientIDs.isEmpty {
                 Button("받을 사람을 정해 다시 요청하기") { isReasking = true }
                     .font(.system(size: 14, weight: .semibold))

@@ -1,4 +1,5 @@
 import Photos
+import PhotosUI
 import SwiftUI
 
 /// 폴더 화면의 + 버튼으로 여는 갤러리: 내 보관함 사진 4열 그리드에서 폴더에 올릴 사진 여러 장 고르기

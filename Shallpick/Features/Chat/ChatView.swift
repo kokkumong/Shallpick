@@ -77,7 +77,7 @@ struct ChatView: View {
             }
             .sheet(isPresented: $isInviting) { FolderInviteSheet(folder: store.folder) }
             .alert("질문 확인", isPresented: Binding(get: { flowError != nil }, set: { if !$0 { flowError = nil } })) {
-                Button("다시 시도") { Task { await focusRequestedMessage() } }
+                if pendingFocusID != nil { Button("다시 시도") { Task { await focusRequestedMessage() } } }
                 Button("닫기", role: .cancel) { pendingFocusID = nil }
             } message: { Text(flowError ?? "") }
             .fullScreenCover(isPresented: $isComposingQuestion, onDismiss: {
@@ -168,6 +168,11 @@ struct ChatView: View {
             pendingFocusID = nil
             questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
         } else if message.recipientIDs.isEmpty || message.recipientIDs.contains(store.myUserID ?? UUID()) {
+            guard photos.count == message.photoIDs.count else {
+                pendingFocusID = nil
+                flowError = "질문에 포함된 사진 일부를 더 이상 볼 수 없어요. 새 질문을 요청해 주세요."
+                return
+            }
             pendingFocusID = nil
             store.markChecked(message)
             questionRoute = QuestionRoute(kind: .respond, message: message, photos: photos)

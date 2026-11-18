@@ -37,10 +37,12 @@ enum PhotoRepository {
     enum PhotoError: LocalizedError {
         case unreadableImage
         case libraryDenied
+        case incompleteSave(Int)
 
         var errorDescription: String? {
             switch self {
             case .unreadableImage: "사진을 읽지 못했어요."
+            case let .incompleteSave(count): "사진 \(count)장을 저장하지 못했어요. 다시 시도해 주세요."
             case .libraryDenied: "사진을 저장하려면 설정에서 사진 추가를 허용해 주세요."
             }
         }
@@ -174,19 +176,8 @@ enum PhotoRepository {
 
     /// 폴더 사진 원본을 받아 기기 사진 보관함에 차례로 저장. 하나 끝날 때마다 onProgress(저장한 개수)
     static func saveToLibrary(_ photos: [PhotoItem], onProgress: (Int) -> Void = { _ in }) async throws {
-        guard await PhotoLibrary.requestAddAccess() else { throw PhotoError.libraryDenied }
-        let storage = try (DemoStore.shared.isActive ? nil : client.storage.from(bucket))
-        for (index, photo) in photos.enumerated() {
-            let data: Data
-            if DemoStore.shared.isActive, let name = photo.url?.lastPathComponent,
-               let bundled = UIImage(named: name)?.jpegData(compressionQuality: 0.9) {
-                data = bundled
-            } else if let storage {
-                data = try await storage.download(path: photo.storagePath)
-            } else { throw PhotoError.unreadableImage }
-            try await PhotoLibrary.addPhoto(data)
-            onProgress(index + 1)
-        }
+        let result = try await PhotoExport.save(photos, onProgress: onProgress)
+        if !result.failed.isEmpty { throw PhotoError.incompleteSave(result.failed.count) }
     }
 
     static func download(_ photo: PhotoItem) async throws -> Data {

@@ -8,6 +8,7 @@ struct PhotoDetailView: View {
     let folder: Folder
     let photos: [PhotoItem]
     var avatarURL: URL?
+    var onQuestionSent: ((ChatMessage) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var currentID: UUID?
@@ -21,16 +22,18 @@ struct PhotoDetailView: View {
     @State private var isShowingQuestionCompose = false
     @State private var isSaving = false
     @State private var sentQuestionID: UUID?
+    @State private var sentQuestion: ChatMessage?
     @State private var isShowingChat = false
     @State private var notice: String?
     @State private var errorMessage: String?
     /// 댓글 입력창에 키보드가 올라와 있는지
     @FocusState private var isCommentFocused: Bool
 
-    init(folder: Folder, photos: [PhotoItem], startID: UUID, avatarURL: URL? = nil) {
+    init(folder: Folder, photos: [PhotoItem], startID: UUID, avatarURL: URL? = nil, onQuestionSent: ((ChatMessage) -> Void)? = nil) {
         self.folder = folder
         self.photos = photos
         self.avatarURL = avatarURL
+        self.onQuestionSent = onQuestionSent
         _currentID = State(initialValue: startID)
     }
 
@@ -67,10 +70,12 @@ struct PhotoDetailView: View {
                 ChatView(folder: folder, focusMessageID: sentQuestionID)
             }
             .fullScreenCover(isPresented: $isShowingQuestionCompose, onDismiss: {
-                if sentQuestionID != nil { isShowingChat = true }
+                if let sentQuestion, let onQuestionSent { onQuestionSent(sentQuestion) }
+                else if sentQuestionID != nil { isShowingChat = true }
             }) {
                 if let currentPhoto {
                     QuestionComposeView(folder: folder, photos: [currentPhoto], onSent: { message in
+                        sentQuestion = message
                         sentQuestionID = message.id
                         showNotice("질문을 보냈어요")
                     })
@@ -146,6 +151,7 @@ struct PhotoDetailView: View {
             HStack(spacing: 8) {
                 OtterButton(accessibilityLabel: "이 사진으로 질문 보내기") {
                     guard currentPhoto != nil else { return }
+                    sentQuestion = nil
                     sentQuestionID = nil
                     isShowingQuestionCompose = true
                 }

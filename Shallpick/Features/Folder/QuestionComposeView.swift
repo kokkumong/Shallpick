@@ -344,6 +344,7 @@ struct QuestionComposeView: View {
         members = nil
         guard DemoStore.shared.isActive || SupabaseManager.client != nil else {
             members = []
+            membersFailed = true
             return
         }
         do {
@@ -351,6 +352,7 @@ struct QuestionComposeView: View {
             members = try await ChatRepository.fetchMembers(folderID: folder.id)
                 .filter { $0.userID != me }
                 .sorted { $0.nickname < $1.nickname }
+            recipients.formIntersection(Set((members ?? []).map(\.userID)))
         } catch is CancellationError {
         } catch {
             members = []

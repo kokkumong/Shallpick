@@ -109,7 +109,7 @@ struct FolderPhotoSelectView: View {
                 .padding(.horizontal, 16)
                 .accessibilityAddTraits(.isHeader)
 
-            // .disabled 는 버튼을 반투명하게 만들어 뒤 사진이 비치므로 쓰지 않음
+            // 선택이 없을 때는 다음 단계로 넘어가지 않음
             CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "다음") {
                 let byID = Dictionary(uniqueKeysWithValues: photos.map { ($0.id, $0) })
                 let selected = selectedIDs.compactMap { byID[$0] }
