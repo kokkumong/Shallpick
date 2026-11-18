@@ -13,6 +13,15 @@ final class DemoFlowTests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.7)
     }
 
+    private func closeTopSheet(_ app: XCUIApplication) {
+        let buttons = app.buttons.matching(identifier: "닫기").allElementsBoundByIndex
+        guard let close = buttons.last(where: { $0.isHittable }) else {
+            XCTFail("No visible close button. \(app.debugDescription)")
+            return
+        }
+        tap(close)
+    }
+
     private func capture(_ app: XCUIApplication, _ name: String) {
         // Allow native push/pop and sheet animations to finish before taking evidence.
         Thread.sleep(forTimeInterval: 2)
@@ -169,6 +178,8 @@ final class DemoFlowTests: XCTestCase {
         tap(app.buttons["필터 닫기"])
         tap(app.buttons["사진 올리기"])
         XCTAssertTrue(app.buttons["사진"].firstMatch.waitForExistence(timeout: 10))
+        let fullAccess = app.buttons["Allow Full Access"]
+        if fullAccess.waitForExistence(timeout: 3) { tap(fullAccess) }
         capture(app, "19-photo-library-upload")
         tap(app.buttons["닫기"])
         app.buttons["사진"].firstMatch.press(forDuration: 0.7)
@@ -190,8 +201,8 @@ final class DemoFlowTests: XCTestCase {
         XCTAssertTrue(suggest.waitForExistence(timeout: 20), app.debugDescription)
         tap(suggest)
         capture(app, "23-otter-suggestions")
-        tap(app.buttons["닫기"])
-        tap(app.buttons["닫기"])
+        closeTopSheet(app)
+        closeTopSheet(app)
         tap(app.buttons["선택 끝내기"])
         tap(app.buttons["채팅"])
         XCTAssertTrue(app.buttons["확인하러가기"].waitForExistence(timeout: 10))
@@ -232,10 +243,12 @@ final class DemoFlowTests: XCTestCase {
         XCTAssertTrue(accessibility.waitForExistence(timeout: 10))
         tap(accessibility)
         tap(settings.staticTexts["Motion"])
-        let reduceMotion = settings.switches["Reduce Motion"]
+        let reduceMotion = settings.switches["REDUCE_MOTION"]
         XCTAssertTrue(reduceMotion.waitForExistence(timeout: 10))
-        if reduceMotion.value as? String != "1" {
-            tap(reduceMotion.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)))
+        Thread.sleep(forTimeInterval: 2)
+        for _ in 0..<3 where reduceMotion.value as? String != "1" {
+            tap(reduceMotion)
+            Thread.sleep(forTimeInterval: 1)
         }
         let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "1"), object: reduceMotion)
         XCTAssertEqual(XCTWaiter.wait(for: [enabled], timeout: 5), .completed)

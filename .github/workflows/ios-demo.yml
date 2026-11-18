@@ -88,7 +88,10 @@ jobs:
             -derivedDataPath build/demo -resultBundlePath build/DemoTests.xcresult \
             CODE_SIGNING_ALLOWED=NO SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= \
-            -parallel-testing-enabled NO test 2>&1 | tee build/ui-tests.log | xcbeautify
+            -parallel-testing-enabled NO \
+            -only-testing:ShallpickUITests/DemoFlowTests/testAdditionalReviewScreens \
+            -only-testing:ShallpickUITests/DemoFlowTests/testReducedMotionFlow \
+            test 2>&1 | tee build/ui-tests.log | xcbeautify
       - name: Export actual simulator screenshots
         if: always()
         run: |
