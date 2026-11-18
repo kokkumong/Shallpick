@@ -159,7 +159,7 @@ final class DemoFlowTests: XCTestCase {
         tap(app.buttons["주말 나들이"])
         XCTAssertTrue(app.buttons["채팅"].waitForExistence(timeout: 10))
         tap(app.buttons["주말 나들이"])
-        XCTAssertTrue(app.staticTexts["초대하기"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["초대하기"].waitForExistence(timeout: 10))
         capture(app, "17-folder-invite")
         tap(app.buttons["닫기"])
         tap(app.buttons["필터"])
@@ -180,8 +180,9 @@ final class DemoFlowTests: XCTestCase {
         let preview = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "고른 사진 ")).firstMatch
         tap(preview)
         capture(app, "22-selected-photo-viewer")
-        tap(app.buttons["닫기"])
-        let suggest = app.buttons["추려보기"]
+        // The existing viewer closes by tapping the margin above the image.
+        tap(app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)))
+        let suggest = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "비슷한 사진이")).firstMatch
         if suggest.waitForExistence(timeout: 20) {
             tap(suggest)
             capture(app, "23-otter-suggestions")
@@ -282,9 +283,11 @@ final class DemoFlowTests: XCTestCase {
         tap(app.buttons["새 폴더 만들기"])
         app.textFields.firstMatch.typeText("Review folder")
         tap(app.buttons["확인"])
-        XCTAssertTrue(app.staticTexts["초대하기"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["초대하기"].waitForExistence(timeout: 10))
         capture(app, "32a-new-folder-invite")
-        tap(app.buttons["닫기"])
+        // The create-folder invite uses the native sheet dismiss gesture.
+        app.swipeDown()
+        Thread.sleep(forTimeInterval: 0.7)
         let folder = app.buttons["Review folder"]
         XCTAssertTrue(folder.waitForExistence(timeout: 10))
         tap(folder)
