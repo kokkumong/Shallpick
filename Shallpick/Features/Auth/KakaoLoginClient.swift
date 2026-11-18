@@ -33,17 +33,27 @@ enum KakaoLoginClient {
         let rawNonce = randomNonce()
         let hashedNonce = sha256(rawNonce)
 
-        let token: OAuthTokenValues
-        if isKakaoTalkInstalled() {
-            token = try await authorize { completion in
-                UserApi.shared.loginWithKakaoTalk(nonce: hashedNonce, completion: completion)
-            }
-        } else {
-            token = try await authorize { completion in
+        let loginWithAccount = {
+            try await authorize { completion in
                 UserApi.shared.loginWithKakaoAccount(
                     prompts: nil, loginHint: nil, nonce: hashedNonce, completion: completion
                 )
             }
+        }
+
+        let token: OAuthTokenValues
+        if isKakaoTalkInstalled() {
+            do {
+                token = try await authorize { completion in
+                    UserApi.shared.loginWithKakaoTalk(nonce: hashedNonce, completion: completion)
+                }
+            } catch where isTalkLaunchFailure(error) {
+                // 카카오톡이 깔려 있어도 여는 데 실패하는 경우가 있어서(실기기에서 확인됨) 웹 로그인으로 이어감
+                print("[Kakao] 카카오톡을 열지 못해 카카오계정 로그인으로 바꿈:", error)
+                token = try await loginWithAccount()
+            }
+        } else {
+            token = try await loginWithAccount()
         }
 
         let (idToken, accessToken) = token
@@ -56,6 +66,12 @@ enum KakaoLoginClient {
     /// 그래서 SDK 내부와 같은 방식(LSApplicationQueriesSchemes 의 kakaokompassauth)으로 직접 확인합니다.
     private static func isKakaoTalkInstalled() -> Bool {
         UIApplication.shared.canOpenURL(URL(string: "kakaokompassauth://authorize")!)
+    }
+
+    /// 카카오톡 앱을 띄우지 못했다는 SDK 에러 (유니버설 링크·커스텀 스킴 둘 다 실패)
+    private static func isTalkLaunchFailure(_ error: Error) -> Bool {
+        if case .ClientFailed(reason: .NotSupported, _) = error as? SdkError { return true }
+        return false
     }
 
     private typealias OAuthTokenValues = (idToken: String?, accessToken: String)

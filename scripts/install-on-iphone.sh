@@ -64,6 +64,22 @@ if [[ -z "$UDID" ]]; then
   echo "📱 ${devices[1]}"
 fi
 
+dev_mode() {
+  local json; json=$(mktemp)
+  xcrun devicectl device info details --device "$UDID" --json-output "$json" >/dev/null 2>&1 || true
+  /usr/bin/python3 -I -c 'import json,sys
+try: print(json.load(open(sys.argv[1]))["result"]["deviceProperties"].get("developerModeStatus",""))
+except Exception: print("")' "$json"
+  rm -f "$json"
+}
+if [[ "$(dev_mode)" == "disabled" ]]; then
+  echo "❌ 아이폰의 개발자 모드가 꺼져 있어요."
+  echo "   설정 > 개인정보 보호 및 보안 > (맨 아래) 개발자 모드 를 켜고 재부팅한 뒤,"
+  echo "   재부팅 후 뜨는 '켜기' 창에서 한 번 더 켜기 + 암호 입력 → 다시 실행해 주세요."
+  echo "   메뉴가 안 보이면 케이블을 뺐다 꽂고 '이 컴퓨터를 신뢰'를 다시 눌러 주세요."
+  exit 1
+fi
+
 echo "🔨 빌드 중 (Release, Personal Team)…"
 xcodebuild \
   -project Shallpick.xcodeproj \
