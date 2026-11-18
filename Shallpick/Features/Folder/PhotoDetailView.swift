@@ -349,10 +349,16 @@ private struct PhotoDetailPage: View {
     @State private var visibleHeight: CGFloat = 0
     @State private var photoHeight: CGFloat = 0
 
-    /// 댓글이 없으면 사진을 보이는 칸 가운데에, 댓글이 생기면 위로 붙임
+    /// 사진은 늘 보이는 칸 가운데에서 시작
     private var topSpace: CGFloat {
-        guard feedback.comments.isEmpty, photoHeight > 0 else { return 0 }
+        guard photoHeight > 0 else { return 0 }
         return max(0, (visibleHeight - photoHeight) / 2)
+    }
+
+    /// 댓글이 있으면 짧아도 사진이 맨 위까지 올라갈 만큼 아래 칸을 채움 (20 은 맨 아래 여백)
+    private var belowPhotoMinHeight: CGFloat {
+        guard !feedback.comments.isEmpty, photoHeight > 0 else { return 0 }
+        return max(0, visibleHeight - photoHeight - 20)
     }
 
     var body: some View {
@@ -363,24 +369,27 @@ private struct PhotoDetailPage: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { photoHeight = $0 }
                         .padding(.top, topSpace)
 
-                    // 사진 아래 끝에 살짝 걸침 (540:10933)
-                    PhotoReactionRow(
-                        groups: feedback.reactionGroups,
-                        myUserID: myUserID,
-                        members: members,
-                        onToggle: onToggleReaction
-                    )
-                    .padding(.horizontal, 21)
-                    .padding(.top, -14)
+                    VStack(alignment: .leading, spacing: 0) {
+                        // 사진 아래 끝에 살짝 걸침 (540:10933)
+                        PhotoReactionRow(
+                            groups: feedback.reactionGroups,
+                            myUserID: myUserID,
+                            members: members,
+                            onToggle: onToggleReaction
+                        )
+                        .padding(.horizontal, 21)
+                        .padding(.top, -14)
 
-                    PhotoCommentList(
-                        comments: feedback.comments,
-                        members: members,
-                        myUserID: myUserID,
-                        onDelete: onDeleteComment
-                    )
-                    .padding(.horizontal, 24)
-                    .padding(.top, 14)
+                        PhotoCommentList(
+                            comments: feedback.comments,
+                            members: members,
+                            myUserID: myUserID,
+                            onDelete: onDeleteComment
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.top, 14)
+                    }
+                    .frame(minHeight: belowPhotoMinHeight, alignment: .top)
                 }
                 .padding(.bottom, 20)
             }
