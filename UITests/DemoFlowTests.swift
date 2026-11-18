@@ -172,9 +172,12 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "19-photo-library-upload")
         tap(app.buttons["닫기"])
         app.buttons["사진"].firstMatch.press(forDuration: 0.7)
+        XCTAssertTrue(app.buttons["고른 사진으로 질문 보내기"].waitForExistence(timeout: 5),
+                      "Long press must select without opening photo detail. \(app.debugDescription)")
         capture(app, "20-photo-selection")
         let photos = app.buttons.matching(identifier: "사진")
-        for index in 1..<min(photos.count, 8) { photos.element(boundBy: index).tap() }
+        XCTAssertGreaterThanOrEqual(photos.count, 8, app.debugDescription)
+        for photo in photos.allElementsBoundByIndex.dropFirst().prefix(7) { tap(photo) }
         tap(app.buttons["고른 사진으로 질문 보내기"])
         XCTAssertTrue(app.staticTexts["질문입력"].waitForExistence(timeout: 10))
         capture(app, "21-compose-question")
@@ -184,11 +187,10 @@ final class DemoFlowTests: XCTestCase {
         // The existing viewer closes by tapping the margin above the image.
         tap(app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)))
         let suggest = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "비슷한 사진이")).firstMatch
-        if suggest.waitForExistence(timeout: 20) {
-            tap(suggest)
-            capture(app, "23-otter-suggestions")
-            tap(app.buttons["닫기"])
-        }
+        XCTAssertTrue(suggest.waitForExistence(timeout: 20), app.debugDescription)
+        tap(suggest)
+        capture(app, "23-otter-suggestions")
+        tap(app.buttons["닫기"])
         tap(app.buttons["닫기"])
         tap(app.buttons["선택 끝내기"])
         tap(app.buttons["채팅"])
