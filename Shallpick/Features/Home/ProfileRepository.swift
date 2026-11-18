@@ -32,6 +32,7 @@ enum ProfileRepository {
     }
 
     static func fetch(userID: UUID) async throws -> Profile? {
+        if DemoStore.shared.isActive { return Profile(id: userID, nickname: "시연 사용자", avatarURL: nil) }
         guard let client = SupabaseManager.client else { return nil }
         return try await client
             .from("profiles")

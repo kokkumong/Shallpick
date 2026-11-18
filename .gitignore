@@ -57,3 +57,6 @@ GoogleService-Info.plist
 
 # Local secrets (Kakao / Supabase keys)
 Config/Secrets.xcconfig
+
+# Local validation and upload artifacts
+.local/

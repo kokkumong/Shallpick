@@ -73,7 +73,7 @@ struct HomeView: View {
         #if DEBUG
         .task(id: userID) { await simulateIncomingAfterBackground() }
         #endif
-        .task(id: userID) { await LocalNotifications.requestAuthorization() }
+        .task(id: userID) { if !DemoStore.shared.isActive { await LocalNotifications.requestAuthorization() } }
         // 앱 밖 알림을 눌러 들어오면 그 폴더 채팅으로
         .onChange(of: NotificationRouter.shared.pendingFolderID, initial: true) { _, folderID in
             guard let folderID else { return }
@@ -86,20 +86,37 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
             .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 0) {
+                    if DemoStore.shared.isActive {
+                        HStack {
+                            Text("시연 · 샘플 데이터")
+                            Spacer()
+                            Button("초기화") { DemoStore.shared.reset() }
+                            Button("종료", action: onSignOut)
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.black600)
+                        .padding(.horizontal, 24).padding(.vertical, 6)
+                        .background(Color.blue100)
+                    }
                 HomeHeader(
                     avatarURL: profile?.avatarURL.flatMap(URL.init(string:)),
                     searchText: $searchText,
                     isSearching: $isSearching,
                     onProfile: { toggle(.account) }
                 )
+                }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HomeBottomBar(
                     hasNewNotifications: hasNewNotifications,
                     onNotifications: { toggle(.notifications) },
                     onCreateFolder: { folderDialog = .create },
-                    onJoinWithCode: { folderDialog = .join(code: "") },
-                    onJoinWithQR: { isShowingQRScanner = true }
+                    onJoinWithCode: { folderDialog = .join(code: DemoStore.shared.isActive ? "DEMO26" : "") },
+                    onJoinWithQR: {
+                        if DemoStore.shared.isActive { folderDialog = .join(code: "DEMO26") }
+                        else { isShowingQRScanner = true }
+                    }
                 )
             }
             .ignoresSafeArea(.keyboard)

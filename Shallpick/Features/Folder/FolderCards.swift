@@ -116,7 +116,7 @@ struct FolderPhoto: View {
             )
             .overlay {
                 if let url {
-                    AsyncImage(url: url) { image in
+                    AppImage(url: url) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Color.clear

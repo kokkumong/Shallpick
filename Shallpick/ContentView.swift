@@ -13,7 +13,10 @@ struct ContentView: View {
 
     var body: some View {
         Group {
-            if !isOnboardingFinished || auth.state == .loading {
+            if DemoStore.shared.isActive {
+                HomeView(userID: DemoStore.shared.userID) { DemoStore.shared.end() }
+                    .id(DemoStore.shared.generation)
+            } else if !isOnboardingFinished || auth.state == .loading {
                 OnboardingView(namespace: brandNamespace)
             } else {
                 switch auth.state {
@@ -33,7 +36,9 @@ struct ContentView: View {
         }
         .animation(.spring(duration: 0.6), value: isOnboardingFinished)
         .animation(.spring(duration: 0.6), value: auth.state)
-        .task { await auth.observeSession() }
+        .task(id: DemoStore.shared.isActive) {
+            if !DemoStore.shared.isActive { await auth.observeSession() }
+        }
         .task {
             try? await Task.sleep(for: onboardingMinimumDuration)
             isOnboardingFinished = true
