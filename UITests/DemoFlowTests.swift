@@ -35,6 +35,32 @@ final class DemoFlowTests: XCTestCase {
         add(screenshot)
     }
 
+    func testQuestionRequestFlow() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-reviewCapture"]
+        app.launch()
+        XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
+        tap(app.buttons["demo.start"])
+        tap(app.buttons["주말 나들이"])
+        tap(app.buttons["사진"].firstMatch)
+        tap(app.buttons["이 사진으로 질문 보내기"])
+        XCTAssertTrue(app.textFields["질문할 내용을 입력하세요"].waitForExistence(timeout: 5))
+        capture(app, "request-01-compose")
+        let send = app.buttons["질문 보내기"]
+        XCTAssertFalse(send.isEnabled)
+        tap(app.textFields["질문할 내용을 입력하세요"])
+        app.textFields["질문할 내용을 입력하세요"].typeText("Can I share this photo?")
+        tap(app.buttons["하늘"])
+        XCTAssertTrue(send.isEnabled)
+        tap(send)
+        XCTAssertTrue(app.staticTexts["Can I share this photo?"].waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(app.buttons["주말 나들이"].exists)
+        capture(app, "request-02-sent-in-chat")
+        tap(app.buttons["주말 나들이"])
+        capture(app, "request-03-invite-from-chat")
+    }
+
     func testFailureRecovery() {
         continueAfterFailure = false
         let app = XCUIApplication()

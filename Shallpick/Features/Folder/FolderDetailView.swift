@@ -484,7 +484,8 @@ struct FolderDetailView: View {
                     OtterButton(accessibilityLabel: "고른 사진으로 질문 보내기") {
                         guard !selectedPhotos.isEmpty else { return }
                         isShowingFilterMenu = false
-                        isShowingQuestionCompose = true
+                        sentQuestionID = nil
+                    isShowingQuestionCompose = true
                     }
                     .transition(.opacity)
                 }

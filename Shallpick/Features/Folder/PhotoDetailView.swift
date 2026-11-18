@@ -146,6 +146,7 @@ struct PhotoDetailView: View {
             HStack(spacing: 8) {
                 OtterButton(accessibilityLabel: "이 사진으로 질문 보내기") {
                     guard currentPhoto != nil else { return }
+                    sentQuestionID = nil
                     isShowingQuestionCompose = true
                 }
                 CircleIconButton(icon: .iconDownload, accessibilityLabel: "사진 저장") {

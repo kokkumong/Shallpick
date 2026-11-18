@@ -22,7 +22,7 @@ struct ChatView: View {
     @State private var progressByMessage: [UUID: Int] = [:]
     @State private var pendingFocusID: UUID?
     @State private var pendingSentID: UUID?
-    private var opensQuestion = false
+    @State private var opensQuestion = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
 
@@ -37,7 +37,7 @@ struct ChatView: View {
         _store = State(initialValue: ChatStore(folder: folder))
         _attachments = State(initialValue: attaching)
         self.onTitle = onTitle
-        self.opensQuestion = opensQuestion
+        _opensQuestion = State(initialValue: opensQuestion)
         _pendingFocusID = State(initialValue: focusMessageID)
     }
 
@@ -137,9 +137,12 @@ struct ChatView: View {
 
     /// 첨부 사진을 누르면: 내 사진 질문이면 결과 화면, 아니면 크게 보기
     private func openPhotos(of message: ChatMessage) {
+        pendingFocusID = message.id
+        opensQuestion = store.isPhotoQuestion(message)
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
         guard !photos.isEmpty else { flowError = "사진을 볼 수 없어요. 삭제되었거나 불러오지 못한 사진입니다."; return }
         if store.isMine(message), store.isPhotoQuestion(message), store.deliveryStates[message.id] == nil {
+            pendingFocusID = nil
             questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
         } else {
             viewing = PhotoViewerItem(photos: photos)
@@ -149,11 +152,11 @@ struct ChatView: View {
     /// 질문 카드 버튼: 다른 사람 질문이면 확인했다고 남기고 응답 화면, 내 질문이면 결과 화면
     private func review(_ message: ChatMessage) {
         pendingFocusID = message.id
+        opensQuestion = true
         Task {
             do {
                 guard let loaded = try await store.loadMessage(message.id) else { flowError = "질문이 삭제되었거나 접근할 수 없어요."; return }
                 openQuestion(loaded)
-                pendingFocusID = nil
             } catch { flowError = "사진을 불러오지 못했어요. 다시 시도해 주세요." }
         }
     }
@@ -162,8 +165,10 @@ struct ChatView: View {
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
         guard !photos.isEmpty else { flowError = "사진을 볼 수 없어요. 삭제되었거나 불러오지 못한 사진입니다."; return }
         if store.isMine(message) {
+            pendingFocusID = nil
             questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
         } else if message.recipientIDs.isEmpty || message.recipientIDs.contains(store.myUserID ?? UUID()) {
+            pendingFocusID = nil
             store.markChecked(message)
             questionRoute = QuestionRoute(kind: .respond, message: message, photos: photos)
         } else {
@@ -266,8 +271,7 @@ struct ChatView: View {
                 return
             }
             scrollPosition.scrollTo(id: id, anchor: .center)
-            if opensQuestion { openQuestion(message) }
-            pendingFocusID = nil
+            if opensQuestion { openQuestion(message) } else { pendingFocusID = nil }
         } catch { flowError = "질문을 불러오지 못했어요. 다시 시도해 주세요." }
     }
 
