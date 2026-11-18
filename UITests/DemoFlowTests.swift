@@ -23,6 +23,11 @@ final class DemoFlowTests: XCTestCase {
         folder.tap()
         XCTAssertTrue(app.buttons["채팅"].waitForExistence(timeout: 10))
         capture(app, "03-latest-folder")
+        app.buttons["사진"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["이 사진으로 질문 보내기"].waitForExistence(timeout: 10))
+        capture(app, "03b-latest-photo-detail")
+        app.buttons["뒤로"].tap()
+        XCTAssertTrue(app.buttons["채팅"].waitForExistence(timeout: 10))
         app.buttons["채팅"].tap()
         let review = app.buttons["확인하러가기"]
         XCTAssertTrue(review.waitForExistence(timeout: 10), app.debugDescription)
