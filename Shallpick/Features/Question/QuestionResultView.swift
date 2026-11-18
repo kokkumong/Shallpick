@@ -9,6 +9,7 @@ struct QuestionResultView: View {
     let photos: [PhotoItem]
     let members: [UUID: ChatMember]
     var myAvatarURL: URL?
+    var onQuestionSent: ((ChatMessage) -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var currentID: UUID?
@@ -26,6 +27,7 @@ struct QuestionResultView: View {
     @State private var pendingCleanup: PhotoShareFiles?
     @State private var notice: String?
     @State private var isReasking = false
+    @State private var resentMessage: ChatMessage?
 
     private var approval: QuestionApproval {
         QuestionApproval(messageID: message.id, recipientIDs: message.recipientIDs,
@@ -117,9 +119,14 @@ struct QuestionResultView: View {
         .sheet(item: $shareFiles, onDismiss: cleanupShare) { files in
             PhotoShareSheet(files: files) { shareFiles = nil }
         }
-        .fullScreenCover(isPresented: $isReasking) {
-            QuestionComposeView(folder: folder, photos: availablePhotos, initialQuestion: message.body) { _ in
-                notice = "받을 사람을 지정해 새 질문을 보냈어요. 채팅에서 확인할 수 있어요."
+        .fullScreenCover(isPresented: $isReasking, onDismiss: {
+            if let resentMessage {
+                onQuestionSent?(resentMessage)
+                dismiss()
+            }
+        }) {
+            QuestionComposeView(folder: folder, photos: availablePhotos, initialQuestion: message.body) { saved in
+                resentMessage = saved
             }
         }
         .alert("사진 공유", isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {

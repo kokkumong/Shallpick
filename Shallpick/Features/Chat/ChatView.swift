@@ -105,6 +105,9 @@ struct ChatView: View {
             .fullScreenCover(item: $viewing) { item in
                 ChatPhotoViewer(photos: item.photos)
             }
+            .onChange(of: questionRoute) { _, route in
+                if route == nil { Task { await focusRequestedMessage() } }
+            }
             .navigationDestination(item: $questionRoute) { route in
                 switch route.kind {
                 case .respond:
@@ -120,7 +123,12 @@ struct ChatView: View {
                         message: route.message,
                         photos: route.photos,
                         members: store.members,
-                        myAvatarURL: myAvatarURL
+                        myAvatarURL: myAvatarURL,
+                        onQuestionSent: { saved in
+                            store.acceptSent(saved)
+                            pendingFocusID = saved.id
+                            opensQuestion = false
+                        }
                     )
                 }
             }
