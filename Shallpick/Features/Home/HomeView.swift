@@ -163,8 +163,10 @@ struct HomeView: View {
             // 결과가 없어도 목록(ScrollView)은 그대로 둬야 입력 중 키보드가 내려가지 않음
             FolderCollectionView(
                 folders: results,
+                canReorder: searchText.trimmingCharacters(in: .whitespaces).isEmpty,
                 onSelect: { path.append(.folder($0)) },
-                onInvite: { invitingFolder = $0 }
+                onInvite: { invitingFolder = $0 },
+                onMove: moveFolder
             )
             .refreshable { await reloadFolders() }
             .overlay {
@@ -362,9 +364,21 @@ struct HomeView: View {
         )
     }
 
+    /// 끌고 있는 폴더를 target 자리로 (target 이 아래에 있으면 그 뒤, 위에 있으면 그 앞)
+    private func moveFolder(_ folderID: UUID, to targetID: UUID) {
+        guard var current = folders,
+              let from = current.firstIndex(where: { $0.id == folderID }),
+              let to = current.firstIndex(where: { $0.id == targetID })
+        else { return }
+        current.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        folders = current
+        FolderOrder(userID: userID).save(current)
+    }
+
     private func reloadFolders() async {
         do {
-            var loaded = try await FolderRepository.fetchMine()
+            // 길게 눌러 바꾼 순서대로
+            var loaded = FolderOrder(userID: userID).apply(to: try await FolderRepository.fetchMine())
             // 표지 사진은 이미 받은 게 있으면 우선 그대로 보여 줌
             let previousCovers = Dictionary(
                 (folders ?? []).map { ($0.id, $0.coverPhotoURLs) },

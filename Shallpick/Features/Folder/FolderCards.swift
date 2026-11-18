@@ -1,23 +1,55 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// 메인 화면 폴더 목록 (리스트)
+/// 길게 눌러 끌면 순서를 바꿀 수 있음 (canReorder 일 때)
 /// Figma: 메인_수정 (570:13095)
 struct FolderCollectionView: View {
     let folders: [Folder]
+    /// 검색 중에는 일부만 보여서 끄기
+    var canReorder = false
     var onSelect: (Folder) -> Void = { _ in }
     var onInvite: (Folder) -> Void = { _ in }
+    /// 끌고 있는 폴더가 다른 폴더 위에 올라가면 그 자리로 (옮길 때마다 저장)
+    var onMove: (_ folderID: UUID, _ targetID: UUID) -> Void = { _, _ in }
+
+    /// 지금 끌고 있는 폴더. 놓을 곳 밖에서 끝나면 알 수 없어서 다음에 끌 때 바뀜
+    @State private var draggingID: UUID?
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 40) {
                 ForEach(folders) { folder in
-                    cell(folder) { FolderListCard(folder: folder) }
+                    reorderable(folder) {
+                        cell(folder) { FolderListCard(folder: folder) }
+                    }
                 }
             }
             .padding(.bottom, 40)
             .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
+        // 폴더 사이 빈 곳에 놓아도 받아 줌
+        .onDrop(of: [.text], isTargeted: nil) { _ in true }
+    }
+
+    @ViewBuilder
+    private func reorderable(_ folder: Folder, @ViewBuilder content: () -> some View) -> some View {
+        if canReorder {
+            content()
+                .onDrag {
+                    draggingID = folder.id
+                    return NSItemProvider(object: folder.id.uuidString as NSString)
+                } preview: {
+                    FolderListCard(folder: folder)
+                }
+                .onDrop(
+                    of: [.text],
+                    delegate: FolderDropDelegate(target: folder.id, draggingID: draggingID, onMove: onMove)
+                )
+        } else {
+            content()
+        }
     }
 
     private func cell(_ folder: Folder, @ViewBuilder content: () -> some View) -> some View {
@@ -29,6 +61,24 @@ struct FolderCollectionView: View {
             .accessibilityLabel(folder.name)
             .accessibilityValue(folder.memberSummary)
     }
+}
+
+/// 끌고 있는 폴더가 이 폴더 위로 들어오면 바로 자리를 바꿔 줌
+private struct FolderDropDelegate: DropDelegate {
+    let target: UUID
+    let draggingID: UUID?
+    let onMove: (UUID, UUID) -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingID, draggingID != target else { return }
+        withAnimation(.snappy(duration: 0.25)) { onMove(draggingID, target) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool { true }
 }
 
 extension Folder {
