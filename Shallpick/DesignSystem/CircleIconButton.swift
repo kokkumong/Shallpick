@@ -50,7 +50,7 @@ struct CircleIconButton: View {
         Button(action: action) {
             CircleIcon(icon: icon, iconSize: iconSize, style: style)
         }
-        .buttonStyle(ShallpickPressStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
     }
 }

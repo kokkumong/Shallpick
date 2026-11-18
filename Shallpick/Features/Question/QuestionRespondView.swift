@@ -12,7 +12,6 @@ struct QuestionRespondView: View {
     let sender: ChatMember?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("question.pinGuideSeen") private var pinGuideSeen = false
 
     @State private var index = 0
@@ -25,7 +24,6 @@ struct QuestionRespondView: View {
     // 넘기기
     @State private var drag: CGSize = .zero
     @State private var dragAxis: Axis?
-    @State private var pageStep = 1
     /// 지금 누르고 있는 손가락이 처음 닿은 곳 (새 손가락인지 가림)
     @State private var touchStart: CGPoint?
     /// 손가락이 떨어지거나 시스템이 제스처를 취소하면 false 로 돌아옴
@@ -84,7 +82,7 @@ struct QuestionRespondView: View {
 
             if draftPin != nil {
                 pinInputBar
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .background(Color.black50)
@@ -93,7 +91,6 @@ struct QuestionRespondView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: votes)
         .sensoryFeedback(.impact(weight: .medium), trigger: draftPin) { _, new in new != nil }
         .task { await load() }
-        .onDisappear { longPressTask?.cancel() }
         // 제스처가 끝나지 못하고 취소돼도 상태를 되돌림
         .onChange(of: isPressing) { _, pressing in
             guard !pressing else { return }
@@ -115,14 +112,6 @@ struct QuestionRespondView: View {
     }
 
     // MARK: - 가운데: 싫어 / 사진 / 좋아
-
-    private var photoTransition: AnyTransition {
-        guard !reduceMotion else { return .opacity }
-        return .asymmetric(
-            insertion: .offset(x: CGFloat(pageStep) * 32).combined(with: .opacity),
-            removal: .opacity
-        )
-    }
 
     private func content(in available: CGSize) -> some View {
         // 위아래 라벨(46) + 간격(20) 두 번, 아래 여백 24
@@ -160,10 +149,13 @@ struct QuestionRespondView: View {
             if let photo = currentPhoto {
                 photoCard(photo, size: size)
                     .id(photo.id)
-                    .transition(photoTransition)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.92).combined(with: .opacity),
+                        removal: .opacity
+                    ))
             } else if isShowingDone {
                 doneCard
-                    .transition(reduceMotion ? .opacity : .scale(scale: 0.98).combined(with: .opacity))
+                    .transition(.scale(scale: 0.92).combined(with: .opacity))
             }
         }
         .frame(width: size.width, height: size.height)
@@ -217,8 +209,8 @@ struct QuestionRespondView: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .offset(reduceMotion ? .zero : drag)
-        .rotationEffect(.degrees(reduceMotion ? 0 : Double(drag.width) / 100), anchor: .bottom)
+        .offset(drag)
+        .rotationEffect(.degrees(Double(drag.width) / 40), anchor: .bottom)
         .opacity(1 - min(flyDistance / 700, 1) * 0.9)
         .animation(.snappy(duration: 0.2), value: selectedPinID)
     }
@@ -436,7 +428,6 @@ struct QuestionRespondView: View {
     }
 
     private func canPage(_ step: Int) -> Bool {
-        guard !isVoting else { return false }
         if step < 0 {
             return isShowingDone || index > 0
         }
@@ -448,8 +439,7 @@ struct QuestionRespondView: View {
         guard canPage(step) else { return }
         selectedPinID = nil
         cancelDraft()
-        pageStep = step
-        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.28)) {
+        withAnimation(.snappy(duration: 0.28)) {
             drag = .zero
             if isShowingDone {
                 isShowingDone = false
@@ -465,12 +455,13 @@ struct QuestionRespondView: View {
     // MARK: - 좋아/싫어
 
     private func vote(_ vote: QuestionVote, photo: PhotoItem) {
-        guard !isVoting, currentPhoto?.id == photo.id else { return }
         isVoting = true
         cancelDraft()
         selectedPinID = nil
-        pageStep = 1
-        let votedIndex = index
+        // 먼저 사진이 넘긴 쪽으로 날아가 사라짐
+        withAnimation(.easeIn(duration: 0.22)) {
+            drag = CGSize(width: 0, height: vote == .dislike ? -900 : 900)
+        }
         let previous = votes[photo.id]
         votes[photo.id] = vote
 
@@ -489,12 +480,9 @@ struct QuestionRespondView: View {
             }
         }
 
-        // 실제 전환이 끝나면 다음 사진으로. 동작 줄이기에서는 이동 없이 바로 진행합니다.
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
-            drag = reduceMotion ? .zero : CGSize(width: 0, height: vote == .dislike ? -900 : 900)
-        } completion: {
-            guard isVoting, currentPhoto?.id == photo.id else { return }
-            showNextUnvoted(after: votedIndex)
+        Task {
+            try? await Task.sleep(for: .milliseconds(230))
+            showNextUnvoted(after: index)
         }
     }
 
@@ -503,7 +491,7 @@ struct QuestionRespondView: View {
         let order = (1...max(photos.count, 1)).map { (current + $0) % max(photos.count, 1) }
         let next = order.first { photos.indices.contains($0) && votes[photos[$0].id] == nil }
         isVoting = false
-        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.28)) {
+        withAnimation(.snappy(duration: 0.3)) {
             drag = .zero
             if let next {
                 index = next

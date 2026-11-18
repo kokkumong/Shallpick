@@ -9,17 +9,16 @@ struct HomeHeader: View {
     var onProfile: () -> Void = {}
 
     @FocusState private var isFieldFocused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 8) {
             ZStack(alignment: .trailing) {
                 if isSearching {
                     searchField
-                        .transition(reduceMotion ? .opacity :
+                        .transition(
                             .asymmetric(
-                                insertion: .scale(scale: 0.96, anchor: .trailing).combined(with: .opacity),
-                                removal: .scale(scale: 0.96, anchor: .trailing).combined(with: .opacity)
+                                insertion: .scale(scale: 0.2, anchor: .trailing).combined(with: .opacity),
+                                removal: .scale(scale: 0.2, anchor: .trailing).combined(with: .opacity)
                             )
                         )
                 } else {
@@ -33,7 +32,7 @@ struct HomeHeader: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel("Shallpick")
                         .accessibilityAddTraits(.isHeader)
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(x: -12)))
+                        .transition(.opacity.combined(with: .offset(x: -12)))
                 }
             }
             .frame(maxWidth: .infinity)
@@ -51,7 +50,7 @@ struct HomeHeader: View {
                     .clipShape(Circle())
                     .floatingShadow()
             }
-            .buttonStyle(ShallpickPressStyle())
+            .buttonStyle(.plain)
             .accessibilityLabel("내 계정")
         }
         .frame(height: 52)
@@ -111,7 +110,7 @@ extension HomeHeader {
     }
 
     private func toggleSearch() {
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.25)) {
+        withAnimation(.snappy(duration: 0.3)) {
             if isSearching {
                 searchText = ""
                 isFieldFocused = false

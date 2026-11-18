@@ -20,7 +20,7 @@ struct OtterButton: View {
                 .clipShape(Circle())
                 .floatingShadow()
         }
-        .buttonStyle(ShallpickPressStyle())
+        .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
     }
 }
