@@ -54,9 +54,15 @@ final class DemoFlowTests: XCTestCase {
         XCTAssertTrue(pin.waitForExistence(timeout: 5), "Pinned comment should survive leaving and reopening the question")
         capture(app, "07-persisted-comment")
 
-        photo.swipeDown()
+        // The long press above placed a tappable pin at the image center.
+        // Start on unobstructed photo content, as a person would, not on that button.
+        let swipeStart = photo.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.2))
+        let swipeEnd = photo.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.8))
+        swipeStart.press(forDuration: 0.05, thenDragTo: swipeEnd)
         let previous = app.buttons["이전 사진"]
-        XCTAssertTrue(previous.isEnabled, "Voting should move to the next unanswered photo")
+        let nextPhoto = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: previous)
+        XCTAssertEqual(XCTWaiter.wait(for: [nextPhoto], timeout: 5), .completed,
+                       "Voting should move to the next unanswered photo. \(app.debugDescription)")
         previous.tap()
         let vote = app.descendants(matching: .any).matching(identifier: "내가 남긴 의견: 좋아").firstMatch
         XCTAssertTrue(vote.waitForExistence(timeout: 5))
