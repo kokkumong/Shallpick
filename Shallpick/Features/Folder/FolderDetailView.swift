@@ -296,8 +296,7 @@ struct FolderDetailView: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 36)
-            .background(.white, in: Capsule())
-            .shallpickShadow(blur: 20)
+            .shadowedBackground(.white, in: Capsule(), blur: 20)
             .padding(.top, 74)
             .transition(.move(edge: .top).combined(with: .opacity))
         }
@@ -614,8 +613,7 @@ struct PhotoFilterMenu: View {
         .foregroundStyle(Color.black800)
         .padding(20)
         .frame(width: 198)
-        .background(.white, in: RoundedRectangle(cornerRadius: 16))
-        .shallpickShadow(blur: 20)
+        .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 16), blur: 20)
     }
 
     /// 선택된 항목은 굵게 + 체크 (filter_d_check)

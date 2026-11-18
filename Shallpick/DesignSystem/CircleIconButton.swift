@@ -30,8 +30,12 @@ struct CircleIcon: View {
             .frame(width: iconSize, height: iconSize)
             .foregroundStyle(foreground)
             .frame(width: 45, height: 45)
-            .background(background, in: Circle())
-            .floatingShadow()
+            // 그림자는 동그라미에만 (아이콘 선을 따라 번지지 않게)
+            .background {
+                Circle()
+                    .fill(background)
+                    .floatingShadow()
+            }
     }
 }
 
@@ -55,6 +59,17 @@ extension View {
     /// Figma: DropShadow (#000000 10%, offset 0, blur 40)
     func shallpickShadow(blur: CGFloat = 40) -> some View {
         shadow(color: .black.opacity(0.1), radius: blur / 2)
+    }
+
+    /// 모양을 채운 배경 + 그 배경에만 그림자 (글자·아이콘에 번지지 않게)
+    func shadowedBackground<S: Shape, Style: ShapeStyle>(
+        _ style: Style,
+        in shape: S,
+        blur: CGFloat = 40
+    ) -> some View {
+        background {
+            shape.fill(style).shallpickShadow(blur: blur)
+        }
     }
 
     /// 떠 있는 동그라미 버튼용: 퍼지는 그림자에 가까운 그림자를 더해 흰 배경 위에서도 테두리가 보이게

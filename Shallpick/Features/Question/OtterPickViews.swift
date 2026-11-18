@@ -377,8 +377,7 @@ private struct PickPhotoTile: View {
             .lineLimit(1)
             .padding(.horizontal, 10)
             .frame(height: 24)
-            .background(isBest ? Color.black800 : .white.opacity(0.92), in: Capsule())
-            .shallpickShadow(blur: 8)
+            .shadowedBackground(isBest ? Color.black800 : .white.opacity(0.92), in: Capsule(), blur: 8)
     }
 }
 
