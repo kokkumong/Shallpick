@@ -840,6 +840,7 @@ private struct ChatLoadFailedView: View {
 
 // MARK: - Preview
 
+#if DEBUG
 #Preview {
     NavigationStack {
         ChatView(store: .preview)
@@ -854,3 +855,4 @@ extension ChatStore {
         return store
     }
 }
+#endif
