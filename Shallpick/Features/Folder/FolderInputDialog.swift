@@ -1,16 +1,18 @@
 import SwiftUI
 
-/// 새 폴더 / 코드로 참여하기 입력 카드
+/// 새 폴더 / 코드로 참여하기 / 프로필(닉네임) 수정 입력 카드
 /// Figma: 새폴더 (246:5269), 코드입력 (246:5278)
 struct FolderInputDialog: View {
     enum Kind {
         case create
         case join
+        case nickname
 
         var title: String {
             switch self {
             case .create: "새 폴더"
             case .join: "코드로 참여하기"
+            case .nickname: "프로필 수정"
             }
         }
 
@@ -18,6 +20,24 @@ struct FolderInputDialog: View {
             switch self {
             case .create: "폴더 이름을 입력해주세요"
             case .join: "코드입력"
+            case .nickname: "닉네임을 입력해주세요"
+            }
+        }
+
+        /// 입력할 수 있는 최대 글자 수 (nil = 제한 없음)
+        var maxLength: Int? {
+            switch self {
+            case .create: FolderRepository.maxNameLength
+            case .join: nil
+            case .nickname: ProfileRepository.maxNicknameLength
+            }
+        }
+
+        var failureMessage: String {
+            switch self {
+            case .create: "폴더를 만들지 못했어요. 잠시 후 다시 시도해 주세요."
+            case .join: "참여하지 못했어요. 잠시 후 다시 시도해 주세요."
+            case .nickname: "닉네임을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요."
             }
         }
     }
@@ -104,14 +124,14 @@ struct FolderInputDialog: View {
         .font(.system(size: 18, weight: .medium))
         .foregroundStyle(Color.black800)
         .focused($isFocused)
-        .submitLabel(kind == .create ? .done : .join)
+        .submitLabel(kind == .join ? .join : .done)
         .onSubmit(submit)
         .textInputAutocapitalization(kind == .join ? .characters : .sentences)
         .autocorrectionDisabled()
         .onChange(of: text) { _, newValue in
             errorMessage = nil
-            if kind == .create, newValue.count > FolderRepository.maxNameLength {
-                text = String(newValue.prefix(FolderRepository.maxNameLength))
+            if let maxLength = kind.maxLength, newValue.count > maxLength {
+                text = String(newValue.prefix(maxLength))
             }
         }
         .padding(.horizontal, 20)
@@ -131,9 +151,7 @@ struct FolderInputDialog: View {
                 errorMessage = error.localizedDescription
             } catch {
                 print("[Folder] \(kind) 실패:", error)
-                errorMessage = kind == .create
-                    ? "폴더를 만들지 못했어요. 잠시 후 다시 시도해 주세요."
-                    : "참여하지 못했어요. 잠시 후 다시 시도해 주세요."
+                errorMessage = kind.failureMessage
             }
         }
     }

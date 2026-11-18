@@ -34,6 +34,13 @@ struct QuestionComposeView: View {
     @State private var isSending = false
     @State private var errorMessage: String?
     @FocusState private var isQuestionFocused: Bool
+    /// 수달이 살펴본 사진 특징 (사진 id 별, 한 번 본 사진은 다시 안 봄)
+    @State private var signals: [UUID: PhotoSignal] = [:]
+    /// 수달의 제안과, 그때 사진 순서 (사진이 바뀌면 다시 계산)
+    @State private var pick: (order: [UUID], value: OtterPick)?
+    /// 수달 제안대로 추리기 전 사진 (되돌리기용). nil 이면 아직 안 추림
+    @State private var photosBeforePick: [PhotoItem]?
+    @State private var isShowingPick = false
 
     private var trimmedQuestion: String {
         question.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -74,7 +81,16 @@ struct QuestionComposeView: View {
             }
         }
         .animation(.snappy(duration: 0.25), value: isShowingViewer)
+        .sheet(isPresented: $isShowingPick) {
+            if let pick = currentPick {
+                OtterPickSheet(photos: photos, pick: pick, onApply: applyPick)
+                    .presentationDetents([.large])
+                    .presentationCornerRadius(36)
+                    .presentationDragIndicator(.hidden)
+            }
+        }
         .task { await loadMembers() }
+        .task(id: photos.map(\.id)) { await analyzePhotos() }
     }
 
     private var content: some View {
@@ -91,6 +107,17 @@ struct QuestionComposeView: View {
                 .padding(.top, 8)
 
                 VStack(alignment: .leading, spacing: 20) {
+                    if let otterPhase {
+                        OtterPickCard(
+                            state: otterPhase,
+                            onOpen: {
+                                isQuestionFocused = false
+                                isShowingPick = true
+                            },
+                            onUndo: undoPick
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    }
                     questionField
                     recipientList
                 }
@@ -112,10 +139,67 @@ struct QuestionComposeView: View {
         withAnimation(.snappy(duration: 0.25)) {
             photos.removeAll { $0.id == photo.id }
         }
+        // 직접 뺀 사진은 되돌리기로도 돌아오지 않게
+        photosBeforePick?.removeAll { $0.id == photo.id }
         onRemovePhoto(photo)
         if photos.isEmpty {
             isShowingViewer = false
             dismiss()
+        }
+    }
+
+    // MARK: - 수달이 추려 주기 (OtterPicker)
+
+    /// 지금 사진 순서에 맞는 제안 (사진이 바뀐 직후 다시 계산 전이면 nil)
+    private var currentPick: OtterPick? {
+        guard let pick, pick.order == photos.map(\.id) else { return nil }
+        return pick.value
+    }
+
+    private var otterPhase: OtterPickCard.Phase? {
+        if let before = photosBeforePick {
+            return .applied(kept: photos.count, before: before.count)
+        }
+        guard photos.count >= OtterPicker.minPhotos else { return nil }
+        guard let pick = currentPick else { return .analyzing }
+        guard pick.removableCount > 0 else { return .nothing }
+        return .suggest(
+            groups: pick.similarGroups.count,
+            total: photos.count,
+            keep: photos.count - pick.removableCount
+        )
+    }
+
+    /// 아직 안 본 사진만 살펴보고 제안을 다시 만듦
+    private func analyzePhotos() async {
+        guard photos.count >= OtterPicker.minPhotos else { return }
+        let missing = photos.filter { signals[$0.id] == nil }
+        if !missing.isEmpty {
+            let found = await OtterPicker.analyze(missing)
+            guard !Task.isCancelled else { return }
+            signals.merge(found) { _, new in new }
+        }
+        let order = photos.map(\.id)
+        let value = OtterPicker.suggest(for: order, signals: signals)
+        withAnimation(.snappy(duration: 0.25)) {
+            pick = (order, value)
+        }
+    }
+
+    private func applyPick(_ kept: [PhotoItem]) {
+        guard !kept.isEmpty, kept.count < photos.count || photosBeforePick != nil else { return }
+        let before = photosBeforePick ?? photos
+        withAnimation(.snappy(duration: 0.3)) {
+            photos = kept
+            photosBeforePick = before
+        }
+    }
+
+    private func undoPick() {
+        guard let before = photosBeforePick else { return }
+        withAnimation(.snappy(duration: 0.3)) {
+            photos = before
+            photosBeforePick = nil
         }
     }
 
