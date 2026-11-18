@@ -161,7 +161,7 @@ final class DemoFlowTests: XCTestCase {
         tap(app.buttons["주말 나들이"])
         XCTAssertTrue(app.buttons["초대하기"].waitForExistence(timeout: 10))
         capture(app, "17-folder-invite")
-        tap(app.buttons["닫기"])
+        tap(app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.2)))
         tap(app.buttons["필터"])
         XCTAssertTrue(app.buttons["필터 닫기"].waitForExistence(timeout: 5))
         capture(app, "18-photo-filters")
@@ -286,7 +286,8 @@ final class DemoFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["초대하기"].waitForExistence(timeout: 10))
         capture(app, "32a-new-folder-invite")
         // The create-folder invite uses the native sheet dismiss gesture.
-        app.swipeDown()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.69))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97)))
         Thread.sleep(forTimeInterval: 0.7)
         let folder = app.buttons["Review folder"]
         XCTAssertTrue(folder.waitForExistence(timeout: 10))
