@@ -12,8 +12,8 @@ struct ChatView: View {
     @State private var attachments: [PhotoItem]
     @State private var isPickingPhotos = false
     @State private var viewing: PhotoViewerItem?
-    /// 질문 아래 블럭을 누르면 사진 화면(반응/생각 남기기)으로
-    @State private var reviewing: PhotoReviewItem?
+    /// 사진 질문: 다른 사람 질문이면 응답 화면, 내 질문이면 결과 화면
+    @State private var questionRoute: QuestionRoute?
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var loadAttempt = 0
     @Environment(\.dismiss) private var dismiss
@@ -60,13 +60,24 @@ struct ChatView: View {
             .fullScreenCover(item: $viewing) { item in
                 ChatPhotoViewer(photos: item.photos)
             }
-            .navigationDestination(item: $reviewing) { item in
-                PhotoDetailView(
-                    folder: store.folder,
-                    photos: item.photos,
-                    startID: item.photos[0].id,
-                    avatarURL: myAvatarURL
-                )
+            .navigationDestination(item: $questionRoute) { route in
+                switch route.kind {
+                case .respond:
+                    QuestionRespondView(
+                        folder: store.folder,
+                        message: route.message,
+                        photos: route.photos,
+                        sender: store.member(for: route.message.userID)
+                    )
+                case .result:
+                    QuestionResultView(
+                        folder: store.folder,
+                        message: route.message,
+                        photos: route.photos,
+                        members: store.members,
+                        myAvatarURL: myAvatarURL
+                    )
+                }
             }
     }
 
@@ -79,18 +90,27 @@ struct ChatView: View {
         Task { await store.reloadPhotos() }
     }
 
+    /// 첨부 사진을 누르면: 내 사진 질문이면 결과 화면, 아니면 크게 보기
     private func openPhotos(of message: ChatMessage) {
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
         guard !photos.isEmpty else { return }
-        viewing = PhotoViewerItem(photos: photos)
+        if store.isMine(message), store.isPhotoQuestion(message), store.deliveryStates[message.id] == nil {
+            questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
+        } else {
+            viewing = PhotoViewerItem(photos: photos)
+        }
     }
 
-    /// 질문 아래 블럭: 다른 사람 질문이면 확인했다고 남기고, 사진 화면에서 반응/생각을 남기게
+    /// 질문 카드 버튼: 다른 사람 질문이면 확인했다고 남기고 응답 화면, 내 질문이면 결과 화면
     private func review(_ message: ChatMessage) {
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
         guard !photos.isEmpty else { return }
-        store.markChecked(message)
-        reviewing = PhotoReviewItem(messageID: message.id, photos: photos)
+        if store.isMine(message) {
+            questionRoute = QuestionRoute(kind: .result, message: message, photos: photos)
+        } else {
+            store.markChecked(message)
+            questionRoute = QuestionRoute(kind: .respond, message: message, photos: photos)
+        }
     }
 
     @ViewBuilder
@@ -549,7 +569,7 @@ private struct MyMessageRow: View {
 }
 
 /// 프로필 사진. 없으면 기본 수달 이미지. (small_profile 190:22499)
-private struct ChatAvatar: View {
+struct ChatAvatar: View {
     let url: URL?
 
     var body: some View {
@@ -714,9 +734,12 @@ private struct PhotoViewerItem: Identifiable {
     let photos: [PhotoItem]
 }
 
-/// 질문 블럭으로 여는 사진 화면 (사진은 1장 이상)
-private struct PhotoReviewItem: Hashable {
-    let messageID: UUID
+/// 사진 질문으로 여는 화면 (사진은 1장 이상)
+private struct QuestionRoute: Hashable {
+    enum Kind { case respond, result }
+
+    let kind: Kind
+    let message: ChatMessage
     let photos: [PhotoItem]
 }
 
