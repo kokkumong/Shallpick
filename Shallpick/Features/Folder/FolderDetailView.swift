@@ -597,12 +597,18 @@ private struct PhotoGrid: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture {
-                if isSelecting { onToggle(photo) } else { onOpen(photo) }
-            }
-            .onLongPressGesture(minimumDuration: 0.4) {
-                if !isSelecting { onLongPress(photo) }
-            }
+            .gesture(
+                LongPressGesture(minimumDuration: 0.4)
+                    .exclusively(before: TapGesture())
+                    .onEnded { gesture in
+                        switch gesture {
+                        case .first:
+                            if !isSelecting { onLongPress(photo) }
+                        case .second:
+                            if isSelecting { onToggle(photo) } else { onOpen(photo) }
+                        }
+                    }
+            )
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("사진")
             .accessibilityAddTraits(.isButton)
