@@ -14,6 +14,7 @@ struct FolderDetailView: View {
     var onOpenChat: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var photoNamespace
     @State private var photos: [PhotoItem]
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
@@ -103,6 +104,7 @@ struct FolderDetailView: View {
                     startID: photo.id,
                     avatarURL: avatarURL
                 )
+                .modifier(PhotoZoomTransition(photoID: photo.id, namespace: photoNamespace))
             }
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
@@ -169,6 +171,7 @@ struct FolderDetailView: View {
         } else {
             PhotoGrid(
                 photos: photos.filtered(by: filters),
+                namespace: photoNamespace,
                 selection: selection,
                 onLongPress: { photo in
                     isShowingFilterMenu = false
@@ -489,6 +492,7 @@ extension [PhotoItem] {
 /// 4열 정사각형, 간격 10 (246:5209)
 private struct PhotoGrid: View {
     let photos: [PhotoItem]
+    let namespace: Namespace.ID
     /// nil 이면 보통 모드
     var selection: Set<UUID>?
     var onLongPress: (PhotoItem) -> Void = { _ in }
@@ -517,6 +521,7 @@ private struct PhotoGrid: View {
         let isSelecting = selection != nil
         let isSelected = selection?.contains(photo.id) == true
         return FolderPhotoCell(photo: photo)
+            .matchedTransitionSource(id: photo.id, in: namespace)
             .overlay {
                 if isSelected {
                     Rectangle().strokeBorder(Color.black800, lineWidth: 4)
