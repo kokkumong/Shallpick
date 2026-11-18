@@ -528,11 +528,12 @@ private struct PhotoGrid: View {
                 }
             }
             .contentShape(Rectangle())
-            .onTapGesture {
-                if isSelecting { onToggle(photo) } else { onOpen(photo) }
-            }
+            // 꾹 누르기를 탭보다 먼저 달아야 0.4초에 바로 켜짐 (탭 뒤에 달면 약 0.65초로 늦어짐)
             .onLongPressGesture(minimumDuration: 0.4) {
                 if !isSelecting { onLongPress(photo) }
+            }
+            .onTapGesture {
+                if isSelecting { onToggle(photo) } else { onOpen(photo) }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("사진")
