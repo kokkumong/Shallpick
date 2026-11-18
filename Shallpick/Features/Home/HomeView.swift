@@ -53,6 +53,14 @@ struct HomeView: View {
                     case .settings:
                         AccountSettingsView(userID: userID, profile: profile,
                             onEditNickname: { folderDialog = .editNickname(current: profile?.nickname ?? "") },
+                            onChangeAvatar: { image in
+                                profile = try await ProfileRepository.updateAvatar(
+                                    image, userID: userID, previousURL: profile?.avatarURL)
+                            },
+                            onResetAvatar: {
+                                profile = try await ProfileRepository.resetAvatar(
+                                    userID: userID, previousURL: profile?.avatarURL)
+                            },
                             onSignOut: onSignOut)
                     case let .folder(folder):
                         FolderDetailView(

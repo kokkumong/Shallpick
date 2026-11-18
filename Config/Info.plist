@@ -32,9 +32,9 @@
 		<string>INSendMessageIntent</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>초대 QR 코드를 찍어 폴더에 참여할 때 카메라를 사용해요.</string>
+	<string>초대 QR 코드를 찍거나 프로필 사진을 찍을 때 카메라를 사용해요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>폴더에 올릴 사진을 고를 때 사진 보관함을 사용해요.</string>
+	<string>폴더에 올릴 사진이나 프로필 사진을 고를 때 사진 보관함을 사용해요.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>폴더 사진을 내 사진 보관함에 저장할 때 사용해요.</string>
 	<key>KAKAO_NATIVE_APP_KEY</key>
