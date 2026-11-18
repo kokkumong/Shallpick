@@ -10,6 +10,8 @@ struct FolderCollectionView: View {
     var canReorder = false
     var onSelect: (Folder) -> Void = { _ in }
     var onInvite: (Folder) -> Void = { _ in }
+    /// 길게 눌러 "폴더 나가기" (확인은 부르는 쪽에서)
+    var onLeave: (Folder) -> Void = { _ in }
     /// 끌고 있는 폴더가 다른 폴더 위에 올라가면 그 자리로 (옮길 때마다 저장)
     var onMove: (_ folderID: UUID, _ targetID: UUID) -> Void = { _, _ in }
 
@@ -57,6 +59,9 @@ struct FolderCollectionView: View {
             .buttonStyle(.plain)
             .contextMenu {
                 Button("초대하기", systemImage: "person.badge.plus") { onInvite(folder) }
+                Button("폴더 나가기", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
+                    onLeave(folder)
+                }
             }
             .accessibilityLabel(folder.name)
             .accessibilityValue(folder.memberSummary)

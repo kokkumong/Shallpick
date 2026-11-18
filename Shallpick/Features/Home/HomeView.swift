@@ -14,6 +14,9 @@ struct HomeView: View {
     @State private var folderDialog: FolderDialog?
     @State private var invitingFolder: Folder?
     @State private var joinedFolder: Folder?
+    /// 나가기 확인창을 띄운 폴더
+    @State private var leavingFolder: Folder?
+    @State private var didFailLeaving = false
     @State private var isShowingQRScanner = false
     @State private var isSearching = false
     @State private var searchText = ""
@@ -144,6 +147,24 @@ struct HomeView: View {
             } message: {
                 Text(joinedFolder?.name ?? "")
             }
+            .alert(
+                "'\(leavingFolder?.name ?? "")' 폴더에서 나갈까요?",
+                isPresented: Binding(
+                    get: { leavingFolder != nil },
+                    set: { if !$0 { leavingFolder = nil } }
+                ),
+                presenting: leavingFolder
+            ) { folder in
+                Button("취소", role: .cancel) {}
+                Button("나가기", role: .destructive) { Task { await leave(folder) } }
+            } message: { _ in
+                Text("나가면 이 폴더의 사진과 채팅을 더 이상 볼 수 없어요. 다시 들어오려면 초대를 받아야 해요.")
+            }
+            .alert("폴더에서 나가지 못했어요", isPresented: $didFailLeaving) {
+                Button("확인", role: .cancel) {}
+            } message: {
+                Text("잠시 후 다시 시도해 주세요.")
+            }
             .onOpenURL { url in
                 // QR / 초대 링크로 열리면 코드 입력창을 채워서 띄움
                 if let code = FolderInviteLink.code(from: url) {
@@ -182,6 +203,7 @@ struct HomeView: View {
                 canReorder: searchText.trimmingCharacters(in: .whitespaces).isEmpty,
                 onSelect: { path.append(.folder($0)) },
                 onInvite: { invitingFolder = $0 },
+                onLeave: { leavingFolder = $0 },
                 onMove: moveFolder
             )
             .refreshable { await reloadFolders() }
@@ -411,6 +433,19 @@ struct HomeView: View {
         current.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
         folders = current
         FolderOrder(userID: userID).save(current)
+    }
+
+    /// 목록에서 먼저 빼고 서버에서 나감. 실패하면 목록을 다시 불러옴
+    private func leave(_ folder: Folder) async {
+        withAnimation(.snappy) { folders?.removeAll { $0.id == folder.id } }
+        if let current = folders { FolderOrder(userID: userID).save(current) }
+        do {
+            try await FolderRepository.leave(folderID: folder.id, userID: userID)
+        } catch {
+            print("[Folder] 나가기 실패:", error)
+            didFailLeaving = true
+            await reloadFolders()
+        }
     }
 
     private func reloadFolders() async {

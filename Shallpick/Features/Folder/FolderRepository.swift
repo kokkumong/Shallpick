@@ -70,6 +70,17 @@ enum FolderRepository {
             .value
     }
 
+    /// 폴더 나가기: 내 멤버 줄만 지움 (RLS "폴더 나가기" 정책). 다른 멤버에게서는 이름이 빠짐
+    static func leave(folderID: UUID, userID: UUID) async throws {
+        guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
+        try await client
+            .from("folder_members")
+            .delete()
+            .eq("folder_id", value: folderID)
+            .eq("user_id", value: userID)
+            .execute()
+    }
+
     static func join(code: String) async throws -> Folder {
         guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
         do {
