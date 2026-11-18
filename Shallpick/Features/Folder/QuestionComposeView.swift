@@ -229,7 +229,7 @@ struct QuestionComposeView: View {
     // MARK: - 데이터
 
     private func loadMembers() async {
-        guard SupabaseManager.client != nil else {
+        guard DemoStore.shared.isActive || SupabaseManager.client != nil else {
             members = []
             return
         }
@@ -445,7 +445,7 @@ private struct RecipientRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 12) {
-                AsyncImage(url: member.avatarURL.flatMap(URL.init(string:))) { phase in
+                AppImage(url: member.avatarURL.flatMap(URL.init(string:))) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFill()
                     } else {

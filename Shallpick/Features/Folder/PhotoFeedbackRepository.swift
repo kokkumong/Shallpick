@@ -61,7 +61,8 @@ enum PhotoFeedbackRepository {
 
     /// 반응 (먼저 남긴 순)
     static func fetchReactions(photoID: UUID) async throws -> [PhotoReaction] {
-        try await client
+        if DemoStore.shared.isActive { return DemoStore.shared.photoReactions.filter { $0.photoID == photoID } }
+        return try await client
             .from("photo_reactions")
             .select()
             .eq("photo_id", value: photoID)
@@ -72,7 +73,8 @@ enum PhotoFeedbackRepository {
 
     /// 댓글 (오래된 것 → 최신 순)
     static func fetchComments(photoID: UUID) async throws -> [PhotoComment] {
-        try await client
+        if DemoStore.shared.isActive { return DemoStore.shared.photoComments.filter { $0.photoID == photoID } }
+        return try await client
             .from("photo_comments")
             .select()
             .eq("photo_id", value: photoID)
@@ -83,6 +85,13 @@ enum PhotoFeedbackRepository {
 
     /// 이미 같은 반응이 있으면 (빠르게 두 번 누른 경우 등) 그대로 둠
     static func addReaction(photoID: UUID, emoji: String) async throws {
+        if DemoStore.shared.isActive {
+            let demo = DemoStore.shared
+            if !demo.photoReactions.contains(where: { $0.photoID == photoID && $0.userID == demo.userID && $0.emoji == emoji }) {
+                demo.photoReactions.append(PhotoReaction(photoID: photoID, userID: demo.userID, emoji: emoji, createdAt: .now))
+            }
+            return
+        }
         try await client
             .from("photo_reactions")
             .upsert(NewReaction(photo_id: photoID, emoji: emoji), onConflict: "photo_id,user_id,emoji", returning: .minimal, ignoreDuplicates: true)
@@ -90,6 +99,7 @@ enum PhotoFeedbackRepository {
     }
 
     static func removeReaction(photoID: UUID, emoji: String) async throws {
+        if DemoStore.shared.isActive { DemoStore.shared.photoReactions.removeAll { $0.photoID == photoID && $0.userID == DemoStore.shared.userID && $0.emoji == emoji }; return }
         guard let me = PhotoRepository.currentUserID else { return }
         try await client
             .from("photo_reactions")
@@ -101,7 +111,12 @@ enum PhotoFeedbackRepository {
     }
 
     static func addComment(id: UUID, photoID: UUID, body: String) async throws -> PhotoComment {
-        try await client
+        if DemoStore.shared.isActive {
+            let comment = PhotoComment(id: id, photoID: photoID, userID: DemoStore.shared.userID, body: String(body.prefix(maxCommentLength)), createdAt: .now)
+            DemoStore.shared.photoComments.append(comment)
+            return comment
+        }
+        return try await client
             .from("photo_comments")
             .insert(NewComment(id: id, photo_id: photoID, body: body))
             .select()
@@ -111,6 +126,7 @@ enum PhotoFeedbackRepository {
     }
 
     static func deleteComment(id: UUID) async throws {
+        if DemoStore.shared.isActive { DemoStore.shared.photoComments.removeAll { $0.id == id && $0.userID == DemoStore.shared.userID }; return }
         try await client
             .from("photo_comments")
             .delete()

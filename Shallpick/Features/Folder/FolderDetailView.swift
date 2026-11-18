@@ -106,8 +106,16 @@ struct FolderDetailView: View {
             }
             // + : 내 보관함에서 골라 폴더에 올리기 (Figma 갤러리 173:21698)
             .sheet(isPresented: $isShowingPhotoPicker) {
-                PhotoPickerSheet { assets in
-                    Task { await uploadPhotos(assets) }
+                Group {
+                    if DemoStore.shared.isActive {
+                        DemoPhotoPicker {
+                            DemoStore.shared.addSamplePhotos(to: folder.id)
+                            isShowingPhotoPicker = false
+                            Task { await reload() }
+                        }
+                    } else {
+                        PhotoPickerSheet { assets in Task { await uploadPhotos(assets) } }
+                    }
                 }
                 .presentationDetents([.large])
                 .presentationCornerRadius(36)
@@ -189,7 +197,7 @@ struct FolderDetailView: View {
     }
 
     private func reload() async {
-        guard SupabaseManager.client != nil else { return }
+        guard DemoStore.shared.isActive || SupabaseManager.client != nil else { return }
         do {
             photos = try await PhotoRepository.fetch(folderID: folder.id)
         } catch is CancellationError {
@@ -466,7 +474,7 @@ struct FolderPhotoCell: View {
         Color.blue50
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                AsyncImage(url: photo.url) { image in
+                AppImage(url: photo.url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Color.clear
@@ -588,7 +596,7 @@ struct PhotoFilterMenu: View {
             Divider()
             row(.mine) {
                 HStack(spacing: 8) {
-                    AsyncImage(url: avatarURL) { phase in
+                    AppImage(url: avatarURL) { phase in
                         if let image = phase.image {
                             image.resizable().scaledToFill()
                         } else {

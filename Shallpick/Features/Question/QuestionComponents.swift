@@ -117,7 +117,7 @@ struct QuestionPhotoImage: View {
         RoundedRectangle(cornerRadius: 20)
             .fill(LinearGradient(colors: [.white, .blue50], startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay {
-                AsyncImage(url: url) { phase in
+                AppImage(url: url) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFill()
                     } else if phase.error != nil {
@@ -131,6 +131,7 @@ struct QuestionPhotoImage: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .accessibilityLabel("사진")
+            .accessibilityIdentifier("question.photo")
     }
 }
 
