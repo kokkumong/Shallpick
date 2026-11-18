@@ -39,17 +39,23 @@ GitHub Actions에서 일반 앱과 시연 앱을 컴파일합니다. 산출물 Z
 | 인증 설정 | Kakao와 Supabase 값이 비어 있는지 확인 |
 | Appetize 등록 | 성공. iPhoneSimulator / arm64 / 최소 iOS 26.0 인식 |
 | Appetize 스트리밍 | 최신 빌드는 시작하지 않음. 계정에 No minutes left가 표시되며, 사용자는 업로드와 시뮬레이터 검증까지 요청. 이전 업로드 `5a6dffa`의 홈 화면이 열린 것은 확인 |
-| iPhone 자동 UI 검증 | 홈, 폴더, 사진 상세, 질문 답변 진입 및 위치 댓글 저장·재진입 확인. 사진별 답변은 테스트 제스처 수정 후 재검증 중 |
+| iPhone 자동 UI 검증 | 통과. 홈 → 폴더 → 사진 상세 → 질문 답변 진입, 위치 댓글 저장, 아래 스와이프로 ‘좋아’ 선택, 화면 재진입 후 답변과 댓글 유지 확인 |
 
 업로드 ZIP SHA-256: `f0d1c7ea01e08dc1dcccaf9c62eeca1582cd682141289c717187c3b97440b12b`
 
-[업로드 앱 빌드 기록](https://github.com/kokkumong/Shallpick/actions/runs/44232377129). 이후 앱 소스는 동일하며, [수정된 자동 검증](https://github.com/kokkumong/Shallpick/actions/runs/44233725132)은 `522fdea`에서 실행합니다.
+[업로드 앱 빌드 기록](https://github.com/kokkumong/Shallpick/actions/runs/44232377129). 이후 앱 소스는 동일하며, [통과한 자동 검증](https://github.com/kokkumong/Shallpick/actions/runs/44233725132)은 `522fdea`에서 실행했습니다. 테스트의 입력창 지정과 스와이프 시작 위치를 바로잡았으며, 해당 수정으로 앱 UI나 동작을 변경하지 않았습니다.
 
 ## 실제 시뮬레이터 화면
 
 | 홈 | 사진 상세 | 위치 댓글 |
 | --- | --- | --- |
 | ![홈](screenshots/latest-main/home.png) | ![사진 상세](screenshots/latest-main/photo-detail.png) | ![위치 댓글](screenshots/latest-main/pinned-comment.png) |
+
+![다시 연 사진의 답변과 댓글 유지](screenshots/latest-main/persisted-vote-and-comment.png)
+
+성공한 검증의 원본 화면은 위 기록의 `iOS-demo-verification-522fdea3cfa80cf6476425c2bd1b0b58342c33de` 산출물에서 받을 수 있습니다. GitHub 산출물 보관 기간은 14일입니다.
+
+별도로 제공한 시연 영상은 같은 앱의 앞선 실행(`44232377129`)으로, 홈부터 사진 상세와 위치 댓글 작성까지 보여줍니다. 해당 실행은 마지막 자동 스와이프가 댓글 핀과 겹쳐 중단됐고, 최종 성공 실행은 스크린샷만 남겼습니다. ‘좋아’ 저장과 재진입 확인의 근거는 위 성공 기록과 마지막 이미지입니다.
 
 ![Appetize 등록 확인](screenshots/latest-main/appetize-uploaded.jpg)
 
