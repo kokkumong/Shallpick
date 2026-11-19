@@ -4,6 +4,8 @@ import SwiftUI
 /// Figma: 질문버튼클릭시 (328:4864)
 struct FolderPhotoSelectView: View {
     let photos: [PhotoItem]
+    /// 내가 공감을 남긴 사진 ("좋아요" 필터)
+    var likedPhotoIDs: Set<UUID> = []
     var avatarURL: URL?
     /// → 를 누르면 고른 순서대로
     let onNext: ([PhotoItem]) -> Void
@@ -13,7 +15,7 @@ struct FolderPhotoSelectView: View {
     @State private var filters: Set<PhotoFilter> = []
     @State private var isShowingFilterMenu = false
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 4)
 
     var body: some View {
         content
@@ -33,7 +35,7 @@ struct FolderPhotoSelectView: View {
 
     @ViewBuilder
     private var content: some View {
-        let visible = photos.filtered(by: filters)
+        let visible = photos.filtered(by: filters, liked: likedPhotoIDs)
         if visible.isEmpty {
             VStack(spacing: 10) {
                 Image(.otterEmpty)
@@ -48,12 +50,12 @@ struct FolderPhotoSelectView: View {
             }
         } else {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 10) {
+                LazyVGrid(columns: columns, spacing: 2) {
                     ForEach(visible) { photo in
                         cell(photo)
                     }
                 }
-                .padding(.horizontal, 24)
+                .padding(.horizontal, 8)
                 .padding(.vertical, 10)
             }
             .scrollIndicators(.hidden)

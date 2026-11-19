@@ -15,7 +15,7 @@ struct PhotoPickerSheet: View {
     @State private var favoritesOnly = false
     @State private var isShowingFilterMenu = false
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 4)
 
     var body: some View {
         content
@@ -66,13 +66,13 @@ struct PhotoPickerSheet: View {
 
     private func grid(_ assets: PHFetchResult<PHAsset>) -> some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(0..<assets.count, id: \.self) { index in
                     cell(assets.object(at: index))
                         .dragSelectItem(index)
                 }
             }
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 8)
             .padding(.vertical, 25)
         }
         .scrollIndicators(.hidden)

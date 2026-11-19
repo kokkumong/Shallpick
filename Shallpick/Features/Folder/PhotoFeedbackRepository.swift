@@ -16,6 +16,15 @@ nonisolated struct PhotoReaction: Codable, Sendable, Hashable {
     }
 }
 
+/// 내가 반응을 남긴 사진 id 만 (photos 와 이어 붙여 폴더로 거름)
+nonisolated private struct ReactedPhotoRow: Decodable, Sendable {
+    let photoID: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case photoID = "photo_id"
+    }
+}
+
 /// 사진에 남긴 생각(댓글)
 nonisolated struct PhotoComment: Codable, Sendable, Identifiable, Hashable {
     let id: UUID
@@ -79,6 +88,19 @@ enum PhotoFeedbackRepository {
             .order("created_at", ascending: true)
             .execute()
             .value
+    }
+
+    /// 이 폴더에서 내가 공감(이모지 반응)을 남긴 사진 — 폴더 화면의 "좋아요" 필터
+    static func fetchMyReactedPhotoIDs(folderID: UUID) async throws -> Set<UUID> {
+        guard let me = PhotoRepository.currentUserID else { return [] }
+        let rows: [ReactedPhotoRow] = try await client
+            .from("photo_reactions")
+            .select("photo_id, photos!inner(folder_id)")
+            .eq("user_id", value: me)
+            .eq("photos.folder_id", value: folderID)
+            .execute()
+            .value
+        return Set(rows.map(\.photoID))
     }
 
     /// 이미 같은 반응이 있으면 (빠르게 두 번 누른 경우 등) 그대로 둠

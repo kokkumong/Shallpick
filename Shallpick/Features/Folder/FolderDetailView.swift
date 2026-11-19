@@ -18,6 +18,8 @@ struct FolderDetailView: View {
     @Namespace private var photoNamespace
     @State private var photos: [PhotoItem]
     @State private var filters: Set<PhotoFilter> = []
+    /// 내가 공감(이모지)을 남긴 사진 — "좋아요" 필터
+    @State private var likedPhotoIDs: Set<UUID> = []
     @State private var isShowingFilterMenu = false
     @State private var isShowingChat = false
     /// 이 화면에서 채팅을 열 때 첫 메시지에 붙일 사진
@@ -43,6 +45,11 @@ struct FolderDetailView: View {
         let title: String
         var done: Int
         let total: Int
+    }
+
+    /// 필터를 건 뒤 그리드에 보이는 사진
+    private var visiblePhotos: [PhotoItem] {
+        photos.filtered(by: filters, liked: likedPhotoIDs)
     }
 
     /// 선택한 사진 (화면 순서)
@@ -103,7 +110,7 @@ struct FolderDetailView: View {
             .navigationDestination(item: $openedPhoto) { photo in
                 PhotoDetailView(
                     folder: folder,
-                    photos: photos.filtered(by: filters),
+                    photos: visiblePhotos,
                     startID: photo.id,
                     avatarURL: avatarURL
                 )
@@ -120,7 +127,7 @@ struct FolderDetailView: View {
             }
             // 수달 : 폴더 사진 중에서 질문에 첨부할 사진 고르기 (Figma 328:4864)
             .fullScreenCover(isPresented: $isShowingQuestionPicker) {
-                FolderPhotoSelectView(photos: photos, avatarURL: avatarURL) { picked in
+                FolderPhotoSelectView(photos: photos, likedPhotoIDs: likedPhotoIDs, avatarURL: avatarURL) { picked in
                     if let onAskQuestion {
                         onAskQuestion(picked)
                     } else {
@@ -165,15 +172,27 @@ struct FolderDetailView: View {
                 Text(errorMessage ?? "")
             }
             .task { await reload() }
+            // 사진 크게 보기에서 공감을 바꾸고 돌아오면 "좋아요" 필터도 다시 맞춤
+            .onChange(of: openedPhoto) { _, opened in
+                if opened == nil { Task { await reloadLiked() } }
+            }
+            .onChange(of: filters.contains(.liked)) { _, isOn in
+                if isOn { Task { await reloadLiked() } }
+            }
     }
 
     @ViewBuilder
     private var content: some View {
         if photos.isEmpty {
             EmptyPhotoView()
+        } else if visiblePhotos.isEmpty {
+            EmptyPhotoView(
+                title: filters.contains(.liked) ? "공감한 사진이 없어요" : "조건에 맞는 사진이 없어요",
+                message: "필터를 풀면 모든 사진을 볼 수 있어요"
+            )
         } else {
             PhotoGrid(
-                photos: photos.filtered(by: filters),
+                photos: visiblePhotos,
                 namespace: photoNamespace,
                 selection: selection,
                 onLongPress: { photo in
@@ -197,6 +216,9 @@ struct FolderDetailView: View {
                     openedPhoto = photo
                 }
             )
+            // 필터를 바꾸면 그리드를 새로 만들어 맨 위부터 보여 줌.
+            // 이전 스크롤 위치를 되살리다 그리드가 옆으로 밀린 채 남는 일이 있었음
+            .id(filters)
             .refreshable { await reload() }
         }
     }
@@ -204,10 +226,22 @@ struct FolderDetailView: View {
     private func reload() async {
         guard SupabaseManager.client != nil else { return }
         do {
+            async let liked: Void = reloadLiked()
             photos = try await PhotoRepository.fetch(folderID: folder.id)
+            await liked
         } catch is CancellationError {
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// 못 불러와도 필터만 비어 보이게 두고 알림은 띄우지 않음
+    private func reloadLiked() async {
+        guard SupabaseManager.client != nil else { return }
+        do {
+            likedPhotoIDs = try await PhotoFeedbackRepository.fetchMyReactedPhotoIDs(folderID: folder.id)
+        } catch {
+            print("[Folder] 공감한 사진 불러오기 실패:", error)
         }
     }
 
@@ -504,10 +538,17 @@ struct FolderPhotoCell: View {
 }
 
 extension [PhotoItem] {
-    /// "내사진" 은 내가 올린 것만. "좋아요" 는 좋아요 기능이 생기면 적용합니다.
-    func filtered(by filters: Set<PhotoFilter>) -> [PhotoItem] {
-        guard filters.contains(.mine), let me = PhotoRepository.currentUserID else { return self }
-        return filter { $0.uploaderID == me }
+    /// "내사진" 은 내가 올린 것만, "좋아요" 는 내가 공감(이모지)을 남긴 것만. 둘 다 켜면 둘 다 맞는 것
+    /// - liked: 내가 공감을 남긴 사진 id
+    func filtered(by filters: Set<PhotoFilter>, liked: Set<UUID>) -> [PhotoItem] {
+        var result = self
+        if filters.contains(.mine), let me = PhotoRepository.currentUserID {
+            result = result.filter { $0.uploaderID == me }
+        }
+        if filters.contains(.liked) {
+            result = result.filter { liked.contains($0.id) }
+        }
+        return result
     }
 }
 
@@ -538,19 +579,19 @@ private struct PhotoGrid: View {
     }
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: displayedColumns)
+        Array(repeating: GridItem(.flexible(), spacing: 2), count: displayedColumns)
     }
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: 2) {
                 ForEach(photos) { photo in
                     cell(photo)
                         .id(photo.id)
                 }
             }
             .scrollTargetLayout()
-            .padding(.horizontal, 24)
+            .padding(.horizontal, 8)
             .padding(.vertical, 10)
             .animation(reduceMotion ? nil : .smooth(duration: 0.2), value: displayedColumns)
         }
@@ -623,6 +664,9 @@ private struct PhotoGrid: View {
 
 /// 사진이 하나도 없을 때
 private struct EmptyPhotoView: View {
+    var title = "아직 사진이 없어요"
+    var message = "+ 버튼을 눌러 사진을 올려보세요"
+
     var body: some View {
         VStack(spacing: 10) {
             Image(.otterEmpty)
@@ -633,10 +677,10 @@ private struct EmptyPhotoView: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 2) {
-                Text("아직 사진이 없어요")
+                Text(title)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.black800)
-                Text("+ 버튼을 눌러 사진을 올려보세요")
+                Text(message)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black400)
             }
