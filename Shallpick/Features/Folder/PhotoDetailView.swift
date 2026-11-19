@@ -408,6 +408,18 @@ private struct PhotoDetailPage: View {
     /// 사진이 가운데에서 얼마나 올라갔는지 (위로 민 거리)
     @State private var scrolledUp: CGFloat = 0
 
+    private struct CommentScrollRequest: Equatable {
+        let id: UUID?
+        let commentIDs: [UUID]
+        let photoHeight: CGFloat
+        let visibleHeight: CGFloat
+    }
+
+    private var commentScrollRequest: CommentScrollRequest {
+        CommentScrollRequest(id: scrollToCommentID, commentIDs: feedback.comments.map(\.id),
+                             photoHeight: photoHeight, visibleHeight: visibleHeight)
+    }
+
     /// 0 = 사진이 가운데 (댓글은 흐리게), 1 = 사진이 맨 위로 올라감 (댓글 또렷하게)
     private var commentReveal: CGFloat {
         guard topSpace > 0 else { return 1 }
@@ -475,13 +487,13 @@ private struct PhotoDetailPage: View {
                 scrolledUp = offset
             }
             .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
-            .onChange(of: scrollToCommentID) { _, id in
-                guard let id, feedback.comments.contains(where: { $0.id == id }) else { return }
-                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
-            }
-            .task(id: feedback.comments.map(\.id)) {
-                guard let id = scrollToCommentID, feedback.comments.contains(where: { $0.id == id }) else { return }
-                await Task.yield()
+            .task(id: commentScrollRequest) {
+                guard let id = scrollToCommentID, photoHeight > 0, visibleHeight > 0,
+                      feedback.comments.contains(where: { $0.id == id }) else { return }
+                // The remote photo and lazy comment rows finish layout after the
+                // data arrives. A layout change cancels and reschedules this task.
+                do { try await Task.sleep(for: .milliseconds(120)) }
+                catch { return }
                 proxy.scrollTo(id, anchor: .center)
             }
         }
