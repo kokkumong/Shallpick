@@ -1,0 +1,26 @@
+[
+  {
+    "file": "03-photo-after.png",
+    "source": "F37A871A-D081-40C4-BA4F-B3672175AD79.png",
+    "run": 44598891689,
+    "ci_commit": "72f9d731d2a31136e61cf54afa1af2805f5a69d1",
+    "product_commit": "87b2f1e",
+    "sha256": "caa47111b75ce54736fb1ffe12437453b7f79bafc6fe9422b5b22d0564f0dc8a"
+  },
+  {
+    "file": "02-selection-after.png",
+    "source": "04FBF3C8-8DCA-4AD1-8577-96DE87A05A88.png",
+    "run": 44598891689,
+    "ci_commit": "72f9d731d2a31136e61cf54afa1af2805f5a69d1",
+    "product_commit": "87b2f1e",
+    "sha256": "3c765d5c12ea5285f1f162b2e8a5596fa0de2c7ab977d6e608c446fe11bf3906"
+  },
+  {
+    "file": "01-folder-after.png",
+    "source": "6C8A95A2-BD2E-49CE-8EC7-10BD61AF3E93.png",
+    "run": 44598891689,
+    "ci_commit": "72f9d731d2a31136e61cf54afa1af2805f5a69d1",
+    "product_commit": "87b2f1e",
+    "sha256": "6f6a04d66e0303145a06d0b15cb7354dd57b76153c20fe8db73b172ca7b4ec8c"
+  }
+]
