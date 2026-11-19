@@ -112,17 +112,30 @@ enum PhotoFeedbackRepository {
 
     static func addComment(id: UUID, photoID: UUID, body: String) async throws -> PhotoComment {
         if DemoStore.shared.isActive {
+            if DemoStore.shared.failNextPhotoComment {
+                DemoStore.shared.failNextPhotoComment = false
+                throw URLError(.notConnectedToInternet)
+            }
+            if let saved = DemoStore.shared.photoComments.first(where: { $0.id == id }) { return saved }
             let comment = PhotoComment(id: id, photoID: photoID, userID: DemoStore.shared.userID, body: String(body.prefix(maxCommentLength)), createdAt: .now)
             DemoStore.shared.photoComments.append(comment)
             return comment
         }
-        return try await client
-            .from("photo_comments")
-            .insert(NewComment(id: id, photo_id: photoID, body: body))
-            .select()
-            .single()
-            .execute()
-            .value
+        do {
+            return try await client
+                .from("photo_comments")
+                .insert(NewComment(id: id, photo_id: photoID, body: body))
+                .select().single().execute().value
+        } catch {
+            // A timeout can follow a successful insert. Reuse that row on retry.
+            if let saved: PhotoComment = try? await client.from("photo_comments")
+                .select().eq("id", value: id).single().execute().value,
+               saved.photoID == photoID, saved.body == body,
+               saved.userID == PhotoRepository.currentUserID {
+                return saved
+            }
+            throw error
+        }
     }
 
     static func deleteComment(id: UUID) async throws {

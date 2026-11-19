@@ -14,9 +14,17 @@ struct ChatView: View {
     @State private var viewing: PhotoViewerItem?
     /// 사진 질문: 다른 사람 질문이면 응답 화면, 내 질문이면 결과 화면
     @State private var questionRoute: QuestionRoute?
+    @State private var commentRoute: PhotoCommentRoute?
+    @State private var commentNotice: String?
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var loadAttempt = 0
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+
+    private struct PhotoCommentRoute: Hashable {
+        let photoID: UUID
+        let commentID: UUID
+    }
 
     /// attaching: 폴더 화면의 수달로 고른 사진. 첫 메시지에 붙어서 나감
     init(
@@ -50,7 +58,31 @@ struct ChatView: View {
                 )
             }
             .toolbar(.hidden, for: .navigationBar)
-            .task(id: loadAttempt) { await store.run() }
+            .task(id: scenePhase == .active ? loadAttempt : -1) {
+                guard scenePhase == .active else { return }
+                await store.run()
+            }
+            .onChange(of: commentRoute) { _, route in
+                if route == nil { Task { await store.refreshTimeline() } }
+            }
+            .overlay(alignment: .top) {
+                if store.refreshFailed {
+                    Button("최신 댓글을 불러오지 못했어요 · 다시 시도") {
+                        Task { await store.refreshTimeline() }
+                    }
+                    .font(.system(size: 12))
+                    .padding(12)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 100)
+                }
+            }
+            .alert("사진 댓글", isPresented: Binding(get: { commentNotice != nil }, set: { if !$0 { commentNotice = nil } })) {
+                Button("확인", role: .cancel) {}
+            } message: { Text(commentNotice ?? "") }
+            .navigationDestination(item: $commentRoute) { route in
+                PhotoDetailView(folder: store.folder, photos: store.folderPhotos,
+                    startID: route.photoID, avatarURL: myAvatarURL, commentID: route.commentID)
+            }
             // 수달: 폴더 사진 중에서 질문에 붙일 사진 고르기 (폴더 화면과 같은 화면)
             .fullScreenCover(isPresented: $isPickingPhotos) {
                 FolderPhotoSelectView(photos: store.folderPhotos, avatarURL: myAvatarURL) { picked in
@@ -92,6 +124,22 @@ struct ChatView: View {
 
     /// 첨부 사진을 누르면: 내 사진 질문이면 결과 화면, 아니면 크게 보기
     private func openPhotos(of message: ChatMessage) {
+        if let commentID = message.sourceCommentID, let photoID = message.photoIDs.first {
+            Task {
+                await store.refreshTimeline()
+                guard !store.refreshFailed else {
+                    commentNotice = "댓글을 확인하지 못했어요. 잠시 후 다시 시도해 주세요."
+                    return
+                }
+                guard store.messages.contains(where: { $0.timelineID == message.timelineID }),
+                      store.folderPhotos.contains(where: { $0.id == photoID }) else {
+                    commentNotice = "사진이나 댓글이 삭제되어 볼 수 없어요."
+                    return
+                }
+                commentRoute = PhotoCommentRoute(photoID: photoID, commentID: commentID)
+            }
+            return
+        }
         let photos = store.attachedPhotos(of: message).compactMap { $0 }
         guard !photos.isEmpty else { return }
         if store.isMine(message), store.isPhotoQuestion(message), store.deliveryStates[message.id] == nil {
@@ -141,6 +189,7 @@ struct ChatView: View {
         .defaultScrollAnchor(.bottom, for: .sizeChanges)
         .scrollDismissesKeyboard(.interactively)
         .scrollIndicators(.hidden)
+        .refreshable { await store.refreshTimeline() }
     }
 
     @ViewBuilder
@@ -158,7 +207,7 @@ struct ChatView: View {
                     MyMessageRow(
                         message: message,
                         photos: photos,
-                        state: store.deliveryStates[message.id],
+                        state: message.isPhotoComment ? nil : store.deliveryStates[message.id],
                         footer: store.isPhotoQuestion(message) && store.deliveryStates[message.id] == nil
                             ? .checkedBy(store.checkers(of: message), onTap: { review(message) })
                             : nil,
@@ -241,7 +290,7 @@ struct ChatRow: Identifiable {
     let dayHeader: Date?
     let topSpacing: CGFloat
 
-    var id: UUID { message.id }
+    var id: String { message.timelineID }
 
     /// 본인이 이 시간 안에 이어서 보내면 붙여서 보여 줌
     static let groupingInterval: TimeInterval = 60
@@ -343,6 +392,33 @@ private struct MessageContent: View {
     let onOpenPhotos: () -> Void
 
     var body: some View {
+        if message.isPhotoComment {
+            Button(action: onOpenPhotos) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("사진 댓글", systemImage: "text.bubble")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.black600)
+                    HStack(alignment: .top, spacing: 10) {
+                        FolderPhoto(url: photos.first.flatMap { $0?.url }, cornerRadius: 8)
+                            .frame(width: 58, height: 78)
+                        Text(message.body)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.black800)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: 250, alignment: .leading)
+                .background(color, in: RoundedRectangle(cornerRadius: 18))
+                .contentShape(RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("사진 댓글: \(message.body)")
+            .accessibilityHint("사진과 댓글을 함께 열어요")
+            .accessibilityIdentifier("chat.photoComment.\(message.id.uuidString)")
+        } else {
         VStack(alignment: alignment, spacing: 0) {
             if !photos.isEmpty {
                 ChatAttachment(photos: photos)
@@ -363,6 +439,7 @@ private struct MessageContent: View {
             )
         }
         .padding(.bottom, 3)
+        }
     }
 }
 

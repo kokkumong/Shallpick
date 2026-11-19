@@ -1,0 +1,58 @@
+[
+  {
+    "id": "2:17",
+    "figmaHash": "790978ea86dca3a74d6e42a838dfbfa016151c85",
+    "file": "home.png",
+    "matchesNative": true,
+    "sha256": "bba038e295a3283c70b7fab81ac383ca91bcf3c10427aa9bbdaf979260517a04"
+  },
+  {
+    "id": "2:21",
+    "figmaHash": "288bcff90a4c55b5a74602590dbce94e0a9c7f97",
+    "file": "folder.png",
+    "matchesNative": true,
+    "sha256": "690c49f094387887cdc17f22fef90b3e38e8ab05cf9a0703f15c75d1c6d10072"
+  },
+  {
+    "id": "2:25",
+    "figmaHash": "ee42392c810d3b69bc23e56a24898d9c99ec8453",
+    "file": "photo-detail.png",
+    "matchesNative": true,
+    "sha256": "c13978e4183717d6a0cf48e9ed628ea3e7c8d1eaa4d47628add0cdafaea2e432"
+  },
+  {
+    "id": "2:29",
+    "figmaHash": "afb19be3d4f9cb559641786718e32a8cd0f69bb1",
+    "file": "question-chat.png",
+    "matchesNative": true,
+    "sha256": "5a2c2ad6436769193d4a97a7a2945c62fb63aca5ebc11eab374e331ea304e11a"
+  },
+  {
+    "id": "2:36",
+    "figmaHash": "7778b2da36967660c0890b73c99ef9bf044b39aa",
+    "file": "photo-response.png",
+    "matchesNative": true,
+    "sha256": "7375fa2401ca32bae149e42ef1018d44611ad6809d8474025e38dfa4ed0ece17"
+  },
+  {
+    "id": "2:40",
+    "figmaHash": "db92c833b6aacac3c1244248aa7a9fa5180bb72d",
+    "file": "pinned-comment.png",
+    "matchesNative": true,
+    "sha256": "2eb3d134b410e709ee6cc4c850c7de0458f73c3df1465f1df7abb1b87b9b4156"
+  },
+  {
+    "id": "2:44",
+    "figmaHash": "a18ced69446964ad8d0bb4c2be5b301d8e157eff",
+    "file": "photo-vote.png",
+    "matchesNative": true,
+    "sha256": "5836396992b21e6322adecf39cca36db9b74b6e232285b2a1bd751ee6c428b3b"
+  },
+  {
+    "id": "2:48",
+    "figmaHash": "136b0d3694a5099dee806ae9bfcdee3b2e2b5700",
+    "file": "persisted-vote-and-comment.png",
+    "matchesNative": true,
+    "sha256": "e76748318c545015a522efc115d2e100cfb0d9c5883e28d71a30d02f3d4de0bb"
+  }
+]

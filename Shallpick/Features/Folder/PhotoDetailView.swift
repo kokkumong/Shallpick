@@ -14,7 +14,11 @@ struct PhotoDetailView: View {
     /// 사진 id → 반응/댓글
     @State private var feedback: [UUID: PhotoFeedback] = [:]
     @State private var members: [UUID: ChatMember] = [:]
-    @State private var draft = ""
+    @State private var drafts: [UUID: String] = [:]
+    @State private var pendingComments: [UUID: (id: UUID, body: String)] = [:]
+    @State private var sendingPhotos: Set<UUID> = []
+    @AppStorage("photo.commentSharingHintSeen") private var sharingHintSeen = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// 방금 내가 남긴 댓글 (그 자리로 스크롤)
     @State private var lastSentCommentID: UUID?
     @State private var isShowingInvite = false
@@ -25,11 +29,12 @@ struct PhotoDetailView: View {
     /// 댓글 입력창에 키보드가 올라와 있는지
     @FocusState private var isCommentFocused: Bool
 
-    init(folder: Folder, photos: [PhotoItem], startID: UUID, avatarURL: URL? = nil) {
+    init(folder: Folder, photos: [PhotoItem], startID: UUID, avatarURL: URL? = nil, commentID: UUID? = nil) {
         self.folder = folder
         self.photos = photos
         self.avatarURL = avatarURL
         _currentID = State(initialValue: startID)
+        _lastSentCommentID = State(initialValue: commentID)
     }
 
     private var currentPhoto: PhotoItem? {
@@ -49,7 +54,7 @@ struct PhotoDetailView: View {
                     .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                PhotoCommentInputBar(text: $draft, isFocused: $isCommentFocused, onSend: sendComment)
+                bottomBar
             }
             .overlay(alignment: .top) { noticeBanner }
             .overlay {
@@ -80,6 +85,52 @@ struct PhotoDetailView: View {
             .task(id: currentID) {
                 if let currentID { await loadFeedback(photoID: currentID) }
             }
+            .onChange(of: currentID) { _, _ in isCommentFocused = false }
+    }
+
+    private var commentDraft: Binding<String> {
+        Binding(
+            get: { currentPhoto.flatMap { drafts[$0.id] } ?? "" },
+            set: { if let id = currentPhoto?.id { drafts[id] = $0 } }
+        )
+    }
+
+    private var bottomBar: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !sharingHintSeen, isCommentFocused {
+                HStack {
+                    Text("댓글은 폴더 채팅에도 공유돼요")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.black600)
+                    Spacer(minLength: 0)
+                    Button("확인") { sharingHintSeen = true }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.black800)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 4)
+                .background(.regularMaterial, in: Capsule())
+            }
+            HStack(alignment: .bottom, spacing: 12) {
+                PhotoCommentInputBar(
+                    text: commentDraft, isFocused: $isCommentFocused,
+                    isSending: currentPhoto.map { sendingPhotos.contains($0.id) } ?? false,
+                    onSend: sendComment
+                )
+                OtterButton(accessibilityLabel: "이 사진으로 질문 보내기") {
+                    guard currentPhoto != nil else { return }
+                    isCommentFocused = false
+                    isShowingQuestionCompose = true
+                }
+                .accessibilityIdentifier("photoDetail.ask")
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 20)
+        .padding(.bottom, isCommentFocused ? 10 : 33)
+        .background { BottomFade() }
+        .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: isCommentFocused)
     }
 
     // MARK: - 사진 넘기기
@@ -111,7 +162,7 @@ struct PhotoDetailView: View {
         .scrollClipDisabled()
     }
 
-    // MARK: - 상단 (540:10921): 뒤로 / 폴더 이름 ⌄ / 수달 / 저장
+    // MARK: - 상단: 뒤로 / 폴더 이름 ⌄ / 저장
 
     private var header: some View {
         HStack(spacing: 0) {
@@ -136,10 +187,6 @@ struct PhotoDetailView: View {
             .padding(.horizontal, 16)
 
             HStack(spacing: 8) {
-                OtterButton(accessibilityLabel: "이 사진으로 질문 보내기") {
-                    guard currentPhoto != nil else { return }
-                    isShowingQuestionCompose = true
-                }
                 CircleIconButton(icon: .iconDownload, accessibilityLabel: "사진 저장") {
                     Task { await saveCurrent() }
                 }
@@ -250,29 +297,29 @@ struct PhotoDetailView: View {
 
     private func sendComment() {
         guard let photo = currentPhoto, let me = myUserID else { return }
-        let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !body.isEmpty else { return }
-        draft = ""
-
-        let id = UUID()
-        let pending = PhotoComment(id: id, photoID: photo.id, userID: me, body: body, createdAt: .now)
-        withAnimation(.snappy(duration: 0.2)) {
-            feedback[photo.id, default: PhotoFeedback()].comments.append(pending)
-        }
-        lastSentCommentID = id
+        guard !sendingPhotos.contains(photo.id) else { return }
+        let text = drafts[photo.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
+        let pending = pendingComments[photo.id] ?? (id: UUID(), body: text)
+        guard !pending.body.isEmpty else { return }
+        pendingComments[photo.id] = pending
+        sendingPhotos.insert(photo.id)
 
         Task {
+            defer { sendingPhotos.remove(photo.id) }
             do {
-                let saved = try await PhotoFeedbackRepository.addComment(id: id, photoID: photo.id, body: body)
-                if let index = feedback[photo.id]?.comments.firstIndex(where: { $0.id == id }) {
-                    feedback[photo.id]?.comments[index] = saved
+                let saved = try await PhotoFeedbackRepository.addComment(id: pending.id, photoID: photo.id, body: pending.body)
+                guard saved.userID == me else { return }
+                if !feedback[photo.id, default: PhotoFeedback()].comments.contains(where: { $0.id == saved.id }) {
+                    feedback[photo.id, default: PhotoFeedback()].comments.append(saved)
                 }
+                if drafts[photo.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines) == pending.body {
+                    drafts[photo.id] = ""
+                }
+                pendingComments[photo.id] = nil
+                sharingHintSeen = true
+                if currentPhoto?.id == photo.id { lastSentCommentID = saved.id }
             } catch {
-                withAnimation(.snappy(duration: 0.2)) {
-                    feedback[photo.id]?.comments.removeAll { $0.id == id }
-                }
-                if draft.isEmpty { draft = body }
-                errorMessage = error.localizedDescription
+                errorMessage = "댓글을 저장하지 못했어요. 입력은 유지했어요. 전송 버튼을 눌러 다시 시도해 주세요."
             }
         }
     }
@@ -409,7 +456,9 @@ private struct PhotoDetailPage: View {
                     }
                     .frame(minHeight: belowPhotoMinHeight, alignment: .top)
                 }
-                .padding(.bottom, 20)
+                // Keep the last comment above the floating input, including when
+                // opening a comment directly from chat.
+                .padding(.bottom, feedback.comments.isEmpty ? 20 : 120)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -424,7 +473,12 @@ private struct PhotoDetailPage: View {
             .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
             .onChange(of: scrollToCommentID) { _, id in
                 guard let id, feedback.comments.contains(where: { $0.id == id }) else { return }
-                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .bottom) }
+                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
+            }
+            .task(id: feedback.comments.map(\.id)) {
+                guard let id = scrollToCommentID, feedback.comments.contains(where: { $0.id == id }) else { return }
+                await Task.yield()
+                proxy.scrollTo(id, anchor: .center)
             }
         }
     }
@@ -748,6 +802,7 @@ private struct PhotoCommentRow: View {
         .padding(.vertical, 14)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("photoComment.\(comment.id.uuidString)")
     }
 }
 
@@ -756,21 +811,25 @@ private struct PhotoCommentRow: View {
 private struct PhotoCommentInputBar: View {
     @Binding var text: String
     var isFocused: FocusState<Bool>.Binding
+    let isSending: Bool
     let onSend: () -> Void
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSending
     }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("사진에 대한 생각을 남겨주세요!", text: $text, axis: .vertical)
+            TextField("댓글 남기기", text: $text, axis: .vertical)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(Color.black800)
                 .lineLimit(1...5)
                 .frame(minHeight: 30)
                 .padding(.leading, 12)
+                .padding(.vertical, 7.5)
                 .focused(isFocused)
+                .disabled(isSending)
+                .accessibilityIdentifier("photoDetail.commentInput")
                 .onChange(of: text) { _, newValue in
                     if newValue.count > PhotoFeedbackRepository.maxCommentLength {
                         text = String(newValue.prefix(PhotoFeedbackRepository.maxCommentLength))
@@ -778,28 +837,25 @@ private struct PhotoCommentInputBar: View {
                 }
 
             Button(action: onSend) {
-                Image(.iconArrowUp)
+                Image(systemName: isSending ? "ellipsis" : "arrow.up")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 14, height: 16)
                     .foregroundStyle(canSend ? Color.white : Color.black400)
-                    .frame(width: 44, height: 30)
+                    .frame(width: 44, height: 44)
                     .background(canSend ? Color.black800 : Color.black200, in: Capsule())
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
             .disabled(!canSend)
             .animation(.snappy(duration: 0.15), value: canSend)
-            .accessibilityLabel("남기기")
+            .accessibilityLabel(isSending ? "댓글 저장 중" : "댓글 남기기")
+            .accessibilityIdentifier("photoDetail.sendComment")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7.5)
+        .padding(.vertical, 0.5)
         .frame(minHeight: 45)
         .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 22.5), blur: 20)
-        .padding(.horizontal, 24)
-        .padding(.top, 30)
-        .padding(.bottom, 10)
-        .background { BottomFade() }
     }
 }
 
