@@ -407,17 +407,20 @@ private struct PhotoDetailPage: View {
     @State private var photoHeight: CGFloat = 0
     /// 사진이 가운데에서 얼마나 올라갔는지 (위로 민 거리)
     @State private var scrolledUp: CGFloat = 0
+    @State private var commentPosition = ScrollPosition(edge: .top)
+    @State private var commentFrames: [UUID: CGRect] = [:]
 
     private struct CommentScrollRequest: Equatable {
         let id: UUID?
         let commentIDs: [UUID]
-        let photoHeight: CGFloat
+        let targetFrame: CGRect?
         let visibleHeight: CGFloat
     }
 
     private var commentScrollRequest: CommentScrollRequest {
         CommentScrollRequest(id: scrollToCommentID, commentIDs: feedback.comments.map(\.id),
-                             photoHeight: photoHeight, visibleHeight: visibleHeight)
+                             targetFrame: scrollToCommentID.flatMap { commentFrames[$0] },
+                             visibleHeight: visibleHeight)
     }
 
     /// 0 = 사진이 가운데 (댓글은 흐리게), 1 = 사진이 맨 위로 올라감 (댓글 또렷하게)
@@ -439,7 +442,7 @@ private struct PhotoDetailPage: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        Group {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     photoView
@@ -461,6 +464,8 @@ private struct PhotoDetailPage: View {
                             comments: feedback.comments,
                             members: members,
                             myUserID: myUserID,
+                            coordinateSpaceID: photo.id,
+                            onFrameChange: { id, frame in commentFrames[id] = frame },
                             onDelete: onDeleteComment
                         )
                         .padding(.horizontal, 24)
@@ -475,7 +480,9 @@ private struct PhotoDetailPage: View {
                 // Keep the last comment above the floating input, including when
                 // opening a comment directly from chat.
                 .padding(.bottom, feedback.comments.isEmpty ? 20 : 120)
+                .coordinateSpace(name: photo.id)
             }
+            .scrollPosition($commentPosition)
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
             .scrollClipDisabled()
@@ -488,13 +495,13 @@ private struct PhotoDetailPage: View {
             }
             .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
             .task(id: commentScrollRequest) {
-                guard let id = scrollToCommentID, photoHeight > 0, visibleHeight > 0,
+                guard let id = scrollToCommentID, let frame = commentFrames[id], visibleHeight > 0,
                       feedback.comments.contains(where: { $0.id == id }) else { return }
-                // The remote photo and lazy comment rows finish layout after the
-                // data arrives. A layout change cancels and reschedules this task.
+                // Measure in the vertical content's coordinates. ID-based scrolling
+                // can target the enclosing horizontal photo pager instead.
                 do { try await Task.sleep(for: .milliseconds(120)) }
                 catch { return }
-                proxy.scrollTo(id, anchor: .center)
+                commentPosition.scrollTo(y: max(0, frame.midY - visibleHeight / 2))
             }
         }
     }
@@ -755,6 +762,8 @@ private struct PhotoCommentList: View {
     let comments: [PhotoComment]
     let members: [UUID: ChatMember]
     let myUserID: UUID?
+    let coordinateSpaceID: UUID
+    let onFrameChange: (UUID, CGRect) -> Void
     let onDelete: (PhotoComment) -> Void
 
     var body: some View {
@@ -771,6 +780,11 @@ private struct PhotoCommentList: View {
                         now: context.date
                     )
                     .id(comment.id)
+                    .onGeometryChange(for: CGRect.self) {
+                        $0.frame(in: .named(coordinateSpaceID))
+                    } action: { frame in
+                        onFrameChange(comment.id, frame)
+                    }
                     .contextMenu {
                         if comment.userID == myUserID {
                             Button("삭제", systemImage: "trash", role: .destructive) { onDelete(comment) }
