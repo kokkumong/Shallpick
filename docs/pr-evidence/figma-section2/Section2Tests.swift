@@ -96,4 +96,3 @@ final class DemoFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["확인하러가기"].waitForExistence(timeout: 5))
     }
 }
-
