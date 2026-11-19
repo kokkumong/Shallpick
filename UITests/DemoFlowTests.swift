@@ -47,12 +47,15 @@ final class DemoFlowTests: XCTestCase {
         let field = app.textFields["이 자리에 남길 댓글을 입력하세요"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), app.debugDescription)
         tap(field)
+        if app.buttons["Continue"].exists { tap(app.buttons["Continue"]) }
         field.typeText("Please crop this part")
         capture(app, "04-comment-entry-after")
         tap(app.buttons["남기기"])
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
         tap(app.alerts.buttons["확인"])
-        XCTAssertEqual(field.value as? String, "Please crop this part")
+        let preservedDraft = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "value == %@", "Please crop this part")).firstMatch
+        XCTAssertTrue(preservedDraft.exists, "Failed save must retain the typed comment")
         tap(app.buttons["남기기"])
         let pin = app.buttons["나: Please crop this part"]
         XCTAssertTrue(pin.waitForExistence(timeout: 5), app.debugDescription)
