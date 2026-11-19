@@ -110,7 +110,12 @@ enum QuestionResponseRepository {
 
     /// 이미 남겼으면 바꿈
     static func setVote(_ vote: QuestionVote, messageID: UUID, folderID: UUID, photoID: UUID) async throws {
-        if DemoStore.shared.isActive { DemoStore.shared.setVote(vote, messageID: messageID, photoID: photoID); return }
+        if DemoStore.shared.isActive {
+            if DemoStore.shared.failNextVote {
+                DemoStore.shared.failNextVote = false
+                throw URLError(.notConnectedToInternet)
+            }
+            DemoStore.shared.setVote(vote, messageID: messageID, photoID: photoID); return }
         try await client
             .from("question_votes")
             .upsert(

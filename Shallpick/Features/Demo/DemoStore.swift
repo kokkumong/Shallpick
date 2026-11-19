@@ -30,6 +30,8 @@ final class DemoStore {
 
     private init() { reset() }
 
+    var failNextComment = ProcessInfo.processInfo.arguments.contains("-section2FailureChecks")
+    var failNextVote = ProcessInfo.processInfo.arguments.contains("-section2FailureChecks")
     func begin() {
         guard Self.isAvailable else { return }
         reset()

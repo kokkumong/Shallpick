@@ -2,8 +2,7 @@ import SwiftUI
 import UIKit
 
 /// 폴더 그리드에서 사진을 누르면 들어가는 화면. 옆으로 넘겨 다른 사진을 봄
-/// 사진 아래: 이모지 반응 + 사진에 대한 생각(댓글), 맨 아래: 생각 남기기 입력창
-/// Figma: 사진 클릭시 (540:10918)
+/// Figma 수정할것: 사진 클릭시 (701:25132). 길게 누른 위치에 댓글을 남깁니다.
 struct PhotoDetailView: View {
     let folder: Folder
     let photos: [PhotoItem]
@@ -15,7 +14,10 @@ struct PhotoDetailView: View {
     @State private var feedback: [UUID: PhotoFeedback] = [:]
     @State private var members: [UUID: ChatMember] = [:]
     @State private var draft = ""
-    /// 방금 내가 남긴 댓글 (그 자리로 스크롤)
+    @State private var draftPoint: CGPoint?
+    @State private var isSendingComment = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 방금 내가 남긴 댓글의 말풍선을 엽니다.
     @State private var lastSentCommentID: UUID?
     @State private var isShowingInvite = false
     @State private var isShowingQuestionCompose = false
@@ -42,14 +44,16 @@ struct PhotoDetailView: View {
         pager
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black50)
-            // 키보드 바깥을 누르면 키보드 내림 (사진 두 번 탭·스크롤은 그대로)
-            .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
             .safeAreaInset(edge: .top, spacing: 0) {
                 header
                     .simultaneousGesture(TapGesture().onEnded { isCommentFocused = false })
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                PhotoCommentInputBar(text: $draft, isFocused: $isCommentFocused, onSend: sendComment)
+                if draftPoint != nil {
+                    PhotoCommentInputBar(text: $draft, isFocused: $isCommentFocused,
+                                         isSending: isSendingComment, onCancel: cancelComment, onSend: sendComment)
+                        .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .overlay(alignment: .top) { noticeBanner }
             .overlay {
@@ -60,6 +64,7 @@ struct PhotoDetailView: View {
             .animation(.snappy(duration: 0.25), value: isShowingInvite)
             .animation(.snappy(duration: 0.2), value: notice)
             .animation(.snappy(duration: 0.2), value: isSaving)
+            .animation(reduceMotion ? nil : .snappy(duration: 0.2), value: draftPoint)
             .toolbar(.hidden, for: .navigationBar)
             .fullScreenCover(isPresented: $isShowingQuestionCompose) {
                 if let currentPhoto {
@@ -76,6 +81,7 @@ struct PhotoDetailView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .onChange(of: currentID) { _, _ in cancelComment() }
             .task { await loadMembers() }
             .task(id: currentID) {
                 if let currentID { await loadFeedback(photoID: currentID) }
@@ -93,7 +99,13 @@ struct PhotoDetailView: View {
                         feedback: feedback[photo.id] ?? PhotoFeedback(),
                         members: members,
                         myUserID: myUserID,
-                        scrollToCommentID: lastSentCommentID,
+                        selectedCommentID: lastSentCommentID,
+                        draftPoint: photo.id == currentID ? draftPoint : nil,
+                        onLongPress: { point in
+                            guard !isSendingComment else { return }
+                            draftPoint = point
+                            isCommentFocused = true
+                        },
                         onDoubleTap: { toggleReaction(PhotoFeedbackRepository.heart, on: photo) },
                         onToggleReaction: { emoji in toggleReaction(emoji, on: photo) },
                         onDeleteComment: { comment in deleteComment(comment) }
@@ -107,11 +119,11 @@ struct PhotoDetailView: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentID)
         .scrollIndicators(.hidden)
-        // 위아래로 늘어난 댓글이 머리/입력창 그라데이션 밑으로 보이게
+        .scrollDisabled(draftPoint != nil)
         .scrollClipDisabled()
     }
 
-    // MARK: - 상단 (540:10921): 뒤로 / 폴더 이름 ⌄ / 수달 / 저장
+    // MARK: - 상단: 뒤로 / 폴더 이름 / 저장 / 질문 화살표
 
     private var header: some View {
         HStack(spacing: 0) {
@@ -136,14 +148,15 @@ struct PhotoDetailView: View {
             .padding(.horizontal, 16)
 
             HStack(spacing: 8) {
-                OtterButton(accessibilityLabel: "이 사진으로 질문 보내기") {
-                    guard currentPhoto != nil else { return }
-                    isShowingQuestionCompose = true
-                }
                 CircleIconButton(icon: .iconDownload, accessibilityLabel: "사진 저장") {
                     Task { await saveCurrent() }
                 }
                 .disabled(isSaving)
+                CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "이 사진으로 질문 보내기") {
+                    guard currentPhoto != nil else { return }
+                    isShowingQuestionCompose = true
+                }
+                .disabled(isSendingComment)
             }
         }
         .frame(height: 52)
@@ -248,31 +261,32 @@ struct PhotoDetailView: View {
 
     // MARK: - 댓글
 
+    private func cancelComment() {
+        guard !isSendingComment else { return }
+        draftPoint = nil
+        draft = ""
+        isCommentFocused = false
+    }
+
     private func sendComment() {
-        guard let photo = currentPhoto, let me = myUserID else { return }
+        guard let photo = currentPhoto, let point = draftPoint,
+              myUserID != nil, !isSendingComment else { return }
         let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
-        draft = ""
-
-        let id = UUID()
-        let pending = PhotoComment(id: id, photoID: photo.id, userID: me, body: body, createdAt: .now)
-        withAnimation(.snappy(duration: 0.2)) {
-            feedback[photo.id, default: PhotoFeedback()].comments.append(pending)
-        }
-        lastSentCommentID = id
-
+        isSendingComment = true
         Task {
             do {
-                let saved = try await PhotoFeedbackRepository.addComment(id: id, photoID: photo.id, body: body)
-                if let index = feedback[photo.id]?.comments.firstIndex(where: { $0.id == id }) {
-                    feedback[photo.id]?.comments[index] = saved
-                }
+                let saved = try await PhotoFeedbackRepository.addComment(
+                    id: UUID(), photoID: photo.id, body: body, x: point.x, y: point.y
+                )
+                feedback[photo.id, default: PhotoFeedback()].comments.append(saved)
+                lastSentCommentID = saved.id
+                isSendingComment = false
+                cancelComment()
             } catch {
-                withAnimation(.snappy(duration: 0.2)) {
-                    feedback[photo.id]?.comments.removeAll { $0.id == id }
-                }
-                if draft.isEmpty { draft = body }
-                errorMessage = error.localizedDescription
+                isSendingComment = false
+                // 실패하면 문구와 위치를 유지해 같은 사진에서 다시 시도합니다.
+                errorMessage = "댓글을 남기지 못했어요. 다시 시도해 주세요."
             }
         }
     }
@@ -342,154 +356,140 @@ private struct PhotoDetailPage: View {
     let feedback: PhotoFeedback
     let members: [UUID: ChatMember]
     let myUserID: UUID?
-    let scrollToCommentID: UUID?
-    /// 하트 켜고 끄기
+    let selectedCommentID: UUID?
+    let draftPoint: CGPoint?
+    let onLongPress: (CGPoint) -> Void
     let onDoubleTap: () -> Void
     let onToggleReaction: (String) -> Void
     let onDeleteComment: (PhotoComment) -> Void
 
-    /// 두 번 눌렀을 때 가운데 크게 떴다 사라지는 하트
-    @State private var heartBurst = 0
-    @State private var isShowingHeart = false
-    /// 머리와 입력창 사이에 보이는 높이, 사진 높이 (사진을 가운데 두려고 잼)
-    @State private var visibleHeight: CGFloat = 0
-    @State private var photoHeight: CGFloat = 0
-    /// 사진이 가운데에서 얼마나 올라갔는지 (위로 민 거리)
-    @State private var scrolledUp: CGFloat = 0
+    @State private var openedCommentID: UUID?
+    @State private var showsLegacyComments = false
+    @State private var touchStart: CGPoint?
+    @State private var pressTask: Task<Void, Never>?
+    @GestureState private var isPressing = false
 
-    /// 0 = 사진이 가운데 (댓글은 흐리게), 1 = 사진이 맨 위로 올라감 (댓글 또렷하게)
-    private var commentReveal: CGFloat {
-        guard topSpace > 0 else { return 1 }
-        return min(max(scrolledUp / topSpace, 0), 1)
-    }
-
-    /// 사진은 늘 보이는 칸 가운데에서 시작
-    private var topSpace: CGFloat {
-        guard photoHeight > 0 else { return 0 }
-        return max(0, (visibleHeight - photoHeight) / 2)
-    }
-
-    /// 댓글이 있으면 짧아도 사진이 맨 위까지 올라갈 만큼 아래 칸을 채움 (20 은 맨 아래 여백)
-    private var belowPhotoMinHeight: CGFloat {
-        guard !feedback.comments.isEmpty, photoHeight > 0 else { return 0 }
-        return max(0, visibleHeight - photoHeight - 20)
-    }
+    private var locatedComments: [PhotoComment] { feedback.comments.filter { $0.x != nil && $0.y != nil } }
+    private var legacyComments: [PhotoComment] { feedback.comments.filter { $0.x == nil || $0.y == nil } }
 
     var body: some View {
-        ScrollViewReader { proxy in
+        GeometryReader { available in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    photoView
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { photoHeight = $0 }
-                        .padding(.top, topSpace)
-
-                    VStack(alignment: .leading, spacing: 0) {
-                        // 사진 아래 끝에 살짝 걸침 (540:10933)
-                        PhotoReactionRow(
-                            groups: feedback.reactionGroups,
-                            myUserID: myUserID,
-                            members: members,
-                            onToggle: onToggleReaction
-                        )
+                    DetailPhotoImage(url: photo.url)
+                        .overlay { GeometryReader { geometry in pins(in: geometry.size) } }
+                        .overlay(alignment: .bottomTrailing) {
+                            if !legacyComments.isEmpty {
+                                Button("이전 댓글 \(legacyComments.count)") { showsLegacyComments = true }
+                                    .font(.system(size: 12, weight: .medium))
+                                    .padding(10)
+                                    .background(Color.black50, in: Capsule())
+                                    .padding(16)
+                            }
+                        }
+                    PhotoReactionRow(groups: feedback.reactionGroups, myUserID: myUserID,
+                                     members: members, onToggle: onToggleReaction)
                         .padding(.horizontal, 21)
                         .padding(.top, -14)
-
-                        PhotoCommentList(
-                            comments: feedback.comments,
-                            members: members,
-                            myUserID: myUserID,
-                            onDelete: onDeleteComment
-                        )
-                        .padding(.horizontal, 24)
-                        .padding(.top, 14)
-                        // 사진이 가운데 있을 땐 아래로 갈수록 흐려지고 살짝 번져서 사진에 눈이 가게,
-                        // 위로 밀수록 또렷해짐
-                        .blur(radius: (1 - commentReveal) * 2.5)
-                        .mask { CommentRevealMask(reveal: commentReveal) }
-                    }
-                    .frame(minHeight: belowPhotoMinHeight, alignment: .top)
                 }
-                .padding(.bottom, 20)
+                .frame(minHeight: available.size.height, alignment: .center)
             }
             .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .scrollClipDisabled()
-            // 머리와 입력창은 안전 영역으로 빠져 있어서 containerSize 가 그 사이 높이
-            .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
-                visibleHeight = height
+        }
+        .onChange(of: selectedCommentID) { _, id in
+            if feedback.comments.contains(where: { $0.id == id }) { openedCommentID = id }
+        }
+        .onChange(of: isPressing) { _, pressing in
+            if !pressing { pressTask?.cancel(); touchStart = nil }
+        }
+        .onDisappear { pressTask?.cancel() }
+        .sheet(isPresented: $showsLegacyComments) {
+            ScrollView {
+                PhotoCommentList(comments: legacyComments, members: members,
+                                 myUserID: myUserID, onDelete: onDeleteComment)
+                    .padding(24)
             }
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in
-                scrolledUp = offset
-            }
-            .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
-            .onChange(of: scrollToCommentID) { _, id in
-                guard let id, feedback.comments.contains(where: { $0.id == id }) else { return }
-                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .bottom) }
-            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
-    private var photoView: some View {
-        DetailPhotoImage(url: photo.url)
-            .overlay {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 96))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.25), radius: 12)
-                    .scaleEffect(isShowingHeart ? 1 : 0.4)
-                    .opacity(isShowingHeart ? 1 : 0)
+    private func pins(in size: CGSize) -> some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .contentShape(RoundedRectangle(cornerRadius: 30))
+                .simultaneousGesture(commentGesture(in: size))
+                .onTapGesture(count: 2, perform: onDoubleTap)
+                .accessibilityLabel("사진")
+                .accessibilityIdentifier("photo.detailImage")
+                .accessibilityAction(named: "댓글 남기기") { onLongPress(CGPoint(x: 0.5, y: 0.5)) }
+                .accessibilityAction(named: "하트 남기기", onDoubleTap)
+            ForEach(locatedComments) { comment in
+                Button {
+                    openedCommentID = openedCommentID == comment.id ? nil : comment.id
+                } label: {
+                    QuestionPinDot(isHighlighted: openedCommentID == comment.id)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .position(point(for: comment, size: size))
+                .accessibilityLabel("\(members[comment.userID]?.nickname ?? "샬픽 사용자"): \(comment.body)")
+                .contextMenu {
+                    if comment.userID == myUserID {
+                        Button("댓글 지우기", systemImage: "trash", role: .destructive) { onDeleteComment(comment) }
+                    }
+                }
+            }
+            if let draftPoint {
+                QuestionPinDot(isHighlighted: true)
+                    .position(x: draftPoint.x * size.width, y: draftPoint.y * size.height)
                     .allowsHitTesting(false)
-                    .accessibilityHidden(true)
             }
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2) {
-                // 하트를 남길 때만 가운데에 크게 띄우고, 지울 때는 바로 숨김
-                let wasHearted = isHearted
-                onDoubleTap()
-                if wasHearted { hideHeart() } else { showHeart() }
+            if let comment = locatedComments.first(where: { $0.id == openedCommentID }) {
+                // 위쪽을 누른 경우 말풍선을 사진 안에 유지합니다.
+                let point = point(for: comment, size: size)
+                QuestionPinBubble(point: CGPoint(x: point.x, y: max(178, point.y)), bounds: size) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(members[comment.userID]?.nickname ?? "샬픽 사용자")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.black600)
+                        ScrollView {
+                            Text(comment.body)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.black800)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 90)
+                    }
+                }
             }
-            .sensoryFeedback(.impact(weight: .light), trigger: heartBurst)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("사진")
-            .accessibilityAction(named: isHearted ? "하트 지우기" : "하트 남기기") { onDoubleTap() }
-    }
-
-    private var isHearted: Bool {
-        guard let myUserID else { return false }
-        return feedback.reactions.contains { $0.userID == myUserID && $0.emoji == PhotoFeedbackRepository.heart }
-    }
-
-    private func hideHeart() {
-        heartBurst += 1
-        withAnimation(.easeOut(duration: 0.15)) { isShowingHeart = false }
-    }
-
-    private func showHeart() {
-        heartBurst += 1
-        let burst = heartBurst
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { isShowingHeart = true }
-        Task {
-            try? await Task.sleep(for: .seconds(0.7))
-            guard burst == heartBurst else { return }
-            withAnimation(.easeOut(duration: 0.25)) { isShowingHeart = false }
         }
     }
-}
 
-/// 댓글 목록에 씌우는 가림막. reveal 0 이면 위는 반쯤 보이고 아래로 갈수록 사라지며, 1 이면 전부 보임
-private struct CommentRevealMask: View {
-    let reveal: CGFloat
+    private func point(for comment: PhotoComment, size: CGSize) -> CGPoint {
+        CGPoint(x: min(max(comment.x ?? 0.5, 0), 1) * size.width,
+                y: min(max(comment.y ?? 0.5, 0), 1) * size.height)
+    }
 
-    var body: some View {
-        VStack(spacing: 0) {
-            LinearGradient(
-                colors: [.black.opacity(0.55 + 0.45 * reveal), .black.opacity(reveal)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: 140)
-            Color.black.opacity(reveal)
-        }
+    private func commentGesture(in size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .updating($isPressing) { _, pressing, _ in pressing = true }
+            .onChanged { value in
+                if touchStart == nil {
+                    touchStart = value.startLocation
+                    let location = value.startLocation
+                    pressTask = Task {
+                        try? await Task.sleep(for: .milliseconds(450))
+                        guard !Task.isCancelled, size.width > 0, size.height > 0 else { return }
+                        openedCommentID = nil
+                        onLongPress(CGPoint(x: min(max(location.x / size.width, 0), 1),
+                                            y: min(max(location.y / size.height, 0), 1)))
+                    }
+                }
+                if hypot(value.translation.width, value.translation.height) > 10 { pressTask?.cancel() }
+            }
+            .onEnded { _ in pressTask?.cancel(); touchStart = nil }
     }
 }
 
@@ -756,21 +756,30 @@ private struct PhotoCommentRow: View {
 private struct PhotoCommentInputBar: View {
     @Binding var text: String
     var isFocused: FocusState<Bool>.Binding
+    let isSending: Bool
+    let onCancel: () -> Void
     let onSend: () -> Void
 
     private var canSend: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !isSending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField("사진에 대한 생각을 남겨주세요!", text: $text, axis: .vertical)
+            Button(action: onCancel) {
+                Image(systemName: "xmark").frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .disabled(isSending)
+            .accessibilityLabel("댓글 취소")
+            TextField("이 자리에 남길 댓글을 입력하세요", text: $text, axis: .vertical)
                 .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(Color.black800)
                 .lineLimit(1...5)
                 .frame(minHeight: 30)
                 .padding(.leading, 12)
                 .focused(isFocused)
+                .disabled(isSending)
                 .onChange(of: text) { _, newValue in
                     if newValue.count > PhotoFeedbackRepository.maxCommentLength {
                         text = String(newValue.prefix(PhotoFeedbackRepository.maxCommentLength))

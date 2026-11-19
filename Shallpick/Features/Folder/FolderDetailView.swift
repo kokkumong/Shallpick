@@ -1,8 +1,7 @@
 import Photos
 import SwiftUI
 
-/// 폴더를 눌렀을 때 들어가는 화면: 사진 4열 그리드 + 상단(뒤로/이름/검색/채팅) + 하단(필터/수달/추가)
-/// Figma: 폴더안 (246:5208)
+/// Figma 수정할것: 폴더안 / 선택 클릭 or 꾹 눌렀을 때 (701:24531, 701:24689)
 struct FolderDetailView: View {
     let folder: Folder
     var avatarURL: URL?
@@ -177,9 +176,6 @@ struct FolderDetailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if photos.isEmpty {
-            EmptyPhotoView()
-        } else {
             PhotoGrid(
                 photos: photos.filtered(by: filters),
                 namespace: photoNamespace,
@@ -200,13 +196,19 @@ struct FolderDetailView: View {
                     }
                     selection = current
                 },
+                onAdd: {
+                    isShowingFilterMenu = false
+                    isShowingPhotoPicker = true
+                },
                 onOpen: { photo in
                     isShowingFilterMenu = false
                     openedPhoto = photo
                 }
             )
             .refreshable { await reload() }
-        }
+            .overlay {
+                if photos.isEmpty { EmptyPhotoView().allowsHitTesting(false) }
+            }
     }
 
     private func reload() async {
@@ -368,7 +370,18 @@ struct FolderDetailView: View {
                 .transition(.opacity)
             } else {
                 HStack(spacing: 8) {
-                    CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
+                    Button {
+                        isShowingFilterMenu = false
+                        selection = []
+                    } label: {
+                        Text("선택")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Color.black800)
+                            .frame(width: 60, height: 45)
+                            .shadowedBackground(.white, in: Capsule())
+                    }
+                    .buttonStyle(ShallpickPressStyle())
+                    .accessibilityIdentifier("folder.select")
                     CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
                         if let onOpenChat {
                             onOpenChat()
@@ -405,29 +418,22 @@ struct FolderDetailView: View {
 
     // MARK: - 하단 (190:22267)
 
-    /// 보통 화면: 필터 ... + / 선택 모드 (397:4908): 필터 ... 수달. 필터는 늘 같은 자리
+    /// 사진 추가는 첫 그리드 칸. 선택 중에만 오른쪽 화살표로 질문을 작성합니다.
     private var bottomBar: some View {
         HStack {
             PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
 
             Spacer()
 
-            // 오른쪽 아래 자리: + 와 수달이 서로 바뀜
-            ZStack {
-                if selection == nil {
-                    CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
-                        isShowingFilterMenu = false
-                        isShowingPhotoPicker = true
-                    }
-                    .transition(.opacity)
-                } else {
-                    OtterButton(accessibilityLabel: "고른 사진으로 질문 보내기") {
+            if selection != nil {
+                    CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "고른 사진으로 질문 보내기") {
                         guard !selectedPhotos.isEmpty else { return }
                         isShowingFilterMenu = false
                         isShowingQuestionCompose = true
                     }
+                    .disabled(selectedPhotos.isEmpty || progress != nil)
+                    .accessibilityIdentifier("folder.askSelected")
                     .transition(.opacity)
-                }
             }
         }
         .padding(.horizontal, 24)
@@ -531,6 +537,7 @@ private struct PhotoGrid: View {
     var onToggle: (PhotoItem) -> Void = { _ in }
     /// 선택 모드에서 옆으로 쓸어 여러 장을 한꺼번에 고르거나 풂
     var onDragSelect: ([(id: UUID, selected: Bool)]) -> Void = { _ in }
+    var onAdd: () -> Void = {}
     /// 보통 모드에서 사진을 누르면 크게 보기
     var onOpen: (PhotoItem) -> Void = { _ in }
 
@@ -552,6 +559,21 @@ private struct PhotoGrid: View {
     var body: some View {
         ScrollView {
             LazyVGrid(columns: columns, spacing: 10) {
+                if selection == nil {
+                    Button(action: onAdd) {
+                        Color.white
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay {
+                                Image(.iconPlus)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 24, height: 24)
+                                    .foregroundStyle(Color.black800)
+                            }
+                    }
+                    .buttonStyle(ShallpickPressStyle())
+                    .accessibilityLabel("사진 올리기")
+                    .accessibilityIdentifier("folder.addPhoto")
+                }
                 ForEach(photos) { photo in
                     cell(photo)
                         .id(photo.id)
@@ -644,7 +666,7 @@ private struct EmptyPhotoView: View {
                 Text("아직 사진이 없어요")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.black800)
-                Text("+ 버튼을 눌러 사진을 올려보세요")
+                Text("첫 번째 + 칸을 눌러 사진을 올려보세요")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black400)
             }
