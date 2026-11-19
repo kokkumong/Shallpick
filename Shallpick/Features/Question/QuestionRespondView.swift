@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// 다른 사람의 사진 질문에서 "확인하러가기"를 누르면 들어오는 화면
-/// 좌우로 넘기며 사진을 보고, 위로 올리면 싫어 / 아래로 내리면 좋아 (사진이 날아가고 다음 사진),
+/// 좋아/싫어 버튼으로 투표하고, 좌우로 넘겨 이전 답변을 검토합니다.
 /// 사진의 한 점을 길게 누르면 그 자리에 댓글을 남김
-/// Figma: 요청응답 (540:11455), 요청응답_가이드 (549:11607) — "사진 답장하기" 입력창은 뺌
+/// Figma 수정할것: 요청응답 (701:25193)
 struct QuestionRespondView: View {
     let folder: Folder
     let message: ChatMessage
@@ -42,6 +42,9 @@ struct QuestionRespondView: View {
     @FocusState private var isInputFocused: Bool
 
     @State private var errorMessage: String?
+    @State private var hasLoaded = false
+    @State private var pendingVote: QuestionVote?
+    @State private var showsUnanswered = false
 
     private struct DraftPin: Equatable {
         let photoID: UUID
@@ -49,8 +52,6 @@ struct QuestionRespondView: View {
         let y: Double
     }
 
-    /// 이만큼 위/아래로 넘기면 좋아/싫어
-    private let voteThreshold: CGFloat = 110
     /// 이만큼 옆으로 넘기면 다음/이전 사진
     private let pageThreshold: CGFloat = 70
 
@@ -62,7 +63,7 @@ struct QuestionRespondView: View {
     }
 
     private var allVoted: Bool {
-        photos.allSatisfy { votes[$0.id] != nil }
+        !photos.isEmpty && photos.allSatisfy { votes[$0.id] != nil }
     }
 
     var body: some View {
@@ -72,7 +73,12 @@ struct QuestionRespondView: View {
                     title: folder.name,
                     avatarURL: sender?.avatarURL.flatMap(URL.init(string:)),
                     subtitle: sender?.nickname ?? "",
-                    onDone: { dismiss() }
+                    onDone: {
+                        guard !isVoting else { return }
+                        if isShowingDone || !hasLoaded || photos.isEmpty { dismiss() }
+                        else if allVoted { cancelDraft(); isShowingDone = true }
+                        else { showsUnanswered = true }
+                    }
                 )
 
                 GeometryReader { proxy in
@@ -104,17 +110,26 @@ struct QuestionRespondView: View {
                 withAnimation(.snappy) { drag = .zero }
             }
         }
+        .confirmationDialog("아직 답하지 않은 사진이 있어요", isPresented: $showsUnanswered, titleVisibility: .visible) {
+            Button("이어서 답하기") {
+                cancelDraft()
+                if let first = photos.firstIndex(where: { votes[$0.id] == nil }) { index = first }
+            }
+            Button("나중에 이어서 하기") { dismiss() }
+            Button("취소", role: .cancel) {}
+        }
         .alert(
             "문제가 생겼어요",
             isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
         ) {
+            if !hasLoaded { Button("다시 불러오기") { Task { await load() } } }
             Button("확인", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
         }
     }
 
-    // MARK: - 가운데: 싫어 / 사진 / 좋아
+    // MARK: - 사진과 투표 버튼
 
     private var photoTransition: AnyTransition {
         guard !reduceMotion else { return .opacity }
@@ -125,33 +140,54 @@ struct QuestionRespondView: View {
     }
 
     private func content(in available: CGSize) -> some View {
-        // 위아래 라벨(46) + 간격(20) 두 번, 아래 여백 24
-        let photoSize = QuestionPhotoLayout.size(
-            width: available.width - 60,
-            maxHeight: available.height - 2 * (46 + 20) - 24
-        )
-        let progress = drag.height / voteThreshold
+        // 기존 사진/댓글 컴포넌트는 유지하고, 아래에 투표 버튼만 배치합니다.
+        let maxHeight = max(120, available.height - 122)
+        let width = min(available.width, maxHeight * 3 / 4)
+        let photoSize = CGSize(width: width, height: width * 4 / 3)
 
-        return VStack(spacing: 20) {
-            QuestionVoteLabel(
-                vote: .dislike,
-                emphasis: min(max(-progress, 0), 1),
-                isChosen: currentPhoto.map { votes[$0.id] == .dislike } ?? false
-            )
-
-            HStack(spacing: 11) {
-                QuestionChevronButton(direction: .previous, isEnabled: canPage(-1)) { page(-1) }
-                photoArea(size: photoSize)
-                QuestionChevronButton(direction: .next, isEnabled: canPage(1)) { page(1) }
+        return VStack(spacing: 18) {
+            Spacer(minLength: 0)
+            photoArea(size: photoSize)
+                .overlay(alignment: .leading) {
+                    QuestionChevronButton(direction: .previous, isEnabled: canPage(-1)) { page(-1) }
+                        .padding(.leading, 8)
+                }
+                .overlay(alignment: .trailing) {
+                    QuestionChevronButton(direction: .next, isEnabled: canPage(1)) { page(1) }
+                        .padding(.trailing, 8)
+                }
+            if !isShowingDone {
+                HStack(spacing: 30) {
+                    voteButton(.dislike)
+                    voteButton(.like)
+                }
             }
-
-            QuestionVoteLabel(
-                vote: .like,
-                emphasis: min(max(progress, 0), 1),
-                isChosen: currentPhoto.map { votes[$0.id] == .like } ?? false
-            )
+            Spacer(minLength: 0)
         }
         .padding(.bottom, 24)
+    }
+
+    private func voteButton(_ choice: QuestionVote) -> some View {
+        let chosen = currentPhoto.map { votes[$0.id] == choice } ?? false
+        return Button {
+            if let photo = currentPhoto { vote(choice, photo: photo) }
+        } label: {
+            ZStack {
+                Image(choice == .like ? .iconLike : .iconDislike)
+                    .resizable().scaledToFit()
+                    .frame(width: 30, height: 30)
+                    .foregroundStyle(chosen ? Color.brandBlue : (choice == .like ? Color.black800 : Color.black400))
+                    .opacity(isVoting && pendingVote == choice ? 0 : 1)
+                if isVoting && pendingVote == choice { ProgressView() }
+            }
+            .frame(width: 78, height: 78)
+            .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 20))
+        }
+        .buttonStyle(ShallpickPressStyle())
+        .disabled(!hasLoaded || isVoting || currentPhoto == nil || draftPin != nil)
+        .accessibilityLabel(choice.label)
+        .accessibilityValue(chosen ? "선택됨" : "선택 안 됨")
+        .accessibilityIdentifier("question.vote.\(choice.rawValue)")
     }
 
     @ViewBuilder
@@ -171,7 +207,6 @@ struct QuestionRespondView: View {
 
     private func photoCard(_ photo: PhotoItem, size: CGSize) -> some View {
         let photoPins = pins.filter { $0.photoID == photo.id }
-        let flyDistance = abs(drag.height)
 
         return ZStack(alignment: .topLeading) {
             QuestionPhotoImage(url: photo.url)
@@ -219,7 +254,6 @@ struct QuestionRespondView: View {
         .frame(width: size.width, height: size.height)
         .offset(reduceMotion ? .zero : drag)
         .rotationEffect(.degrees(reduceMotion ? 0 : Double(drag.width) / 100), anchor: .bottom)
-        .opacity(1 - min(flyDistance / 700, 1) * 0.9)
         .animation(.snappy(duration: 0.2), value: selectedPinID)
     }
 
@@ -354,7 +388,7 @@ struct QuestionRespondView: View {
 
     // MARK: - 손가락
 
-    /// 가만히 길게 누르면 댓글 자리, 움직이면 처음 방향으로 넘기기 (옆: 사진 넘기기, 위아래: 좋아/싫어)
+    /// 가만히 길게 누르면 댓글 자리, 움직이면 처음 방향으로 넘기기 (옆: 사진 넘기기, 위아래: 투표하지 않음)
     private func photoGesture(photo: PhotoItem, size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0)
             .updating($isPressing) { _, pressing, _ in pressing = true }
@@ -389,7 +423,7 @@ struct QuestionRespondView: View {
                     // 더 넘길 사진이 없으면 고무줄처럼 조금만
                     drag = CGSize(width: translation.width * (canPage(step) ? 1 : 0.25), height: 0)
                 case .vertical:
-                    drag = CGSize(width: 0, height: translation.height)
+                    break
                 case nil:
                     break
                 }
@@ -406,15 +440,7 @@ struct QuestionRespondView: View {
 
                 switch axis {
                 case .vertical:
-                    let distance = value.translation.height
-                    let predicted = value.predictedEndTranslation.height
-                    if distance < -voteThreshold || predicted < -voteThreshold * 2 {
-                        vote(.dislike, photo: photo)
-                    } else if distance > voteThreshold || predicted > voteThreshold * 2 {
-                        vote(.like, photo: photo)
-                    } else {
-                        withAnimation(.snappy) { drag = .zero }
-                    }
+                    break
                 case .horizontal:
                     let distance = value.translation.width
                     if distance < -pageThreshold, canPage(1) {
@@ -436,12 +462,12 @@ struct QuestionRespondView: View {
     }
 
     private func canPage(_ step: Int) -> Bool {
-        guard !isVoting else { return false }
+        guard !isVoting, draftPin == nil else { return false }
         if step < 0 {
             return isShowingDone || index > 0
         }
         guard !isShowingDone else { return false }
-        return index < photos.count - 1 || allVoted
+        return index < photos.count - 1
     }
 
     private func page(_ step: Int) {
@@ -454,8 +480,6 @@ struct QuestionRespondView: View {
             if isShowingDone {
                 isShowingDone = false
                 index = photos.count - 1
-            } else if step > 0, index == photos.count - 1 {
-                isShowingDone = true
             } else {
                 index += step
             }
@@ -465,50 +489,30 @@ struct QuestionRespondView: View {
     // MARK: - 좋아/싫어
 
     private func vote(_ vote: QuestionVote, photo: PhotoItem) {
-        guard !isVoting, currentPhoto?.id == photo.id else { return }
+        guard hasLoaded, !isVoting, draftPin == nil, currentPhoto?.id == photo.id else { return }
         isVoting = true
-        cancelDraft()
+        pendingVote = vote
         selectedPinID = nil
-        pageStep = 1
         let votedIndex = index
-        let previous = votes[photo.id]
-        votes[photo.id] = vote
-
         Task {
+            defer { isVoting = false; pendingVote = nil }
             do {
                 try await QuestionResponseRepository.setVote(
-                    vote,
-                    messageID: message.id,
-                    folderID: folder.id,
-                    photoID: photo.id
+                    vote, messageID: message.id, folderID: folder.id, photoID: photo.id
                 )
+                votes[photo.id] = vote
+                pageStep = 1
+                // 저장된 사진은 그대로 두고 다음 미응답 사진으로 이동합니다.
+                // 모두 답한 뒤에는 마지막 사진을 유지하고 체크로 마무리합니다.
+                let order = (1...photos.count).map { (votedIndex + $0) % photos.count }
+                if let next = order.first(where: { votes[photos[$0].id] == nil }) {
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+                        index = next
+                        drag = .zero
+                    }
+                }
             } catch {
-                print("[Question] 좋아/싫어 남기기 실패:", error)
-                votes[photo.id] = previous
                 errorMessage = "의견을 남기지 못했어요. 다시 시도해 주세요."
-            }
-        }
-
-        // 실제 전환이 끝나면 다음 사진으로. 동작 줄이기에서는 이동 없이 바로 진행합니다.
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
-            drag = reduceMotion ? .zero : CGSize(width: 0, height: vote == .dislike ? -900 : 900)
-        } completion: {
-            guard isVoting, currentPhoto?.id == photo.id else { return }
-            showNextUnvoted(after: votedIndex)
-        }
-    }
-
-    /// 아직 의견을 안 남긴 다음 사진으로. 다 남겼으면 마무리 카드
-    private func showNextUnvoted(after current: Int) {
-        let order = (1...max(photos.count, 1)).map { (current + $0) % max(photos.count, 1) }
-        let next = order.first { photos.indices.contains($0) && votes[photos[$0].id] == nil }
-        isVoting = false
-        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.28)) {
-            drag = .zero
-            if let next {
-                index = next
-            } else {
-                isShowingDone = true
             }
         }
     }
@@ -590,7 +594,10 @@ struct QuestionRespondView: View {
     // MARK: - 불러오기
 
     private func load() async {
-        guard let myUserID else { return }
+        guard let myUserID else {
+            errorMessage = "로그인 상태를 확인해 주세요."
+            return
+        }
         do {
             async let loadedVotes = QuestionResponseRepository.fetchVotes(messageID: message.id, userID: myUserID)
             async let loadedPins = QuestionResponseRepository.fetchPins(messageID: message.id, userID: myUserID)
@@ -605,9 +612,10 @@ struct QuestionRespondView: View {
             if let first = photos.firstIndex(where: { votes[$0.id] == nil }), index == 0 {
                 index = first
             }
+            hasLoaded = true
         } catch is CancellationError {
         } catch {
-            print("[Question] 응답 불러오기 실패:", error)
+            errorMessage = "응답을 불러오지 못했어요. 다시 시도해 주세요."
         }
     }
 }

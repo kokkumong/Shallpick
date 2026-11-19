@@ -23,12 +23,15 @@ nonisolated struct PhotoComment: Codable, Sendable, Identifiable, Hashable {
     let userID: UUID
     let body: String
     let createdAt: Date
+    // 과거 댓글은 위치 정보가 없으므로 nil로 읽습니다.
+    var x: Double? = nil
+    var y: Double? = nil
 
     enum CodingKeys: String, CodingKey {
         case id
         case photoID = "photo_id"
         case userID = "user_id"
-        case body
+        case body, x, y
         case createdAt = "created_at"
     }
 }
@@ -50,6 +53,8 @@ enum PhotoFeedbackRepository {
         let id: UUID
         let photo_id: UUID
         let body: String
+        let x: Double?
+        let y: Double?
     }
 
     private static var client: SupabaseClient {
@@ -100,10 +105,10 @@ enum PhotoFeedbackRepository {
             .execute()
     }
 
-    static func addComment(id: UUID, photoID: UUID, body: String) async throws -> PhotoComment {
+    static func addComment(id: UUID, photoID: UUID, body: String, x: Double? = nil, y: Double? = nil) async throws -> PhotoComment {
         try await client
             .from("photo_comments")
-            .insert(NewComment(id: id, photo_id: photoID, body: body))
+            .insert(NewComment(id: id, photo_id: photoID, body: body, x: x, y: y))
             .select()
             .single()
             .execute()
