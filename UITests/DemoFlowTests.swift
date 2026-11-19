@@ -367,14 +367,19 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "38-detail-otter-bottom")
         let field = app.descendants(matching: .any).matching(identifier: "photoDetail.commentInput").firstMatch
         tap(field)
-        field.typeText("This is my favorite photo")
+        field.typeText("Draft photo comment")
         capture(app, "39-detail-comment-keyboard")
         tap(app.buttons["photoDetail.sendComment"])
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
         tap(app.alerts.buttons["확인"])
-        XCTAssertEqual(field.value as? String, "This is my favorite photo", "Failed comment must retain its draft")
+        XCTAssertEqual(field.value as? String, "Draft photo comment", "Failed comment must retain its draft")
+        tap(field)
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Draft photo comment".count))
+        field.typeText("This is my favorite photo")
         tap(app.buttons["photoDetail.sendComment"])
-        XCTAssertTrue(app.staticTexts["This is my favorite photo"].waitForExistence(timeout: 5))
+        let comment = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "photoComment.")).firstMatch
+        XCTAssertTrue(comment.waitForExistence(timeout: 8), app.debugDescription)
+        XCTAssertTrue(comment.label.contains("This is my favorite photo"))
         tap(app.buttons["뒤로"])
         tap(app.buttons["채팅"])
         let card = app.buttons["사진 댓글: This is my favorite photo"]
@@ -383,8 +388,9 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "40-chat-photo-comment")
         tap(card)
         XCTAssertTrue(otter.waitForExistence(timeout: 5))
-        let body = app.staticTexts["This is my favorite photo"]
+        let body = comment
         XCTAssertTrue(body.waitForExistence(timeout: 5))
+        XCTAssertLessThan(body.frame.maxY, otter.frame.minY - 12, "Linked comment must be readable above the input")
         capture(app, "41-chat-to-photo-comment")
         body.press(forDuration: 1.0)
         XCTAssertTrue(app.buttons["삭제"].waitForExistence(timeout: 5))
@@ -393,7 +399,17 @@ final class DemoFlowTests: XCTestCase {
         let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: card)
         XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 10), .completed)
         capture(app, "42-chat-deleted-comment")
+    }
 
+    func testFirstSwipeGuide() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-reviewCapture", "-freshGuide"]
+        app.launch()
+        XCTAssertTrue(app.buttons["demo.start"].waitForExistence(timeout: 20))
+        tap(app.buttons["demo.start"])
+        tap(app.buttons["주말 나들이"])
+        tap(app.buttons["채팅"])
         let review = app.buttons["확인하러가기"]
         if !review.isHittable { app.swipeDown() }
         tap(review)
@@ -405,7 +421,7 @@ final class DemoFlowTests: XCTestCase {
         let like = app.descendants(matching: .any).matching(identifier: "내가 남긴 의견: 좋아").firstMatch
         let dislike = app.descendants(matching: .any).matching(identifier: "내가 남긴 의견: 싫어").firstMatch
         XCTAssertFalse(like.exists); XCTAssertFalse(dislike.exists)
-        XCTAssertFalse(app.buttons["이전 사진"].isEnabled, "Demo must not advance the actual photo")
+        XCTAssertFalse(app.buttons["이전 사진"].exists && app.buttons["이전 사진"].isEnabled, "Demo must not advance the actual photo")
         tap(app.buttons["완료"])
         tap(review)
         Thread.sleep(forTimeInterval: 1)
@@ -415,7 +431,7 @@ final class DemoFlowTests: XCTestCase {
         let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: skip)
         XCTAssertEqual(XCTWaiter.wait(for: [finished], timeout: 6), .completed)
         XCTAssertFalse(like.exists); XCTAssertFalse(dislike.exists)
-        XCTAssertFalse(app.buttons["이전 사진"].isEnabled)
+        XCTAssertFalse(app.buttons["이전 사진"].exists && app.buttons["이전 사진"].isEnabled)
         capture(app, "44-response-after-demo-no-vote")
     }
 

@@ -55,7 +55,7 @@ struct SwipeGuideView: View {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.45)) { direction = 1 }
                 try await Task.sleep(for: .milliseconds(900))
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) { direction = 0 }
-                try await Task.sleep(for: .milliseconds(600))
+                try await Task.sleep(for: .milliseconds(1500))
                 onFinish()
             } catch { /* Leaving the view cancels the demonstration without recording completion. */ }
         }
