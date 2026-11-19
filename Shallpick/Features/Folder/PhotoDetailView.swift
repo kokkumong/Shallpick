@@ -796,6 +796,7 @@ private struct PhotoCommentRow: View {
         .padding(.vertical, 14)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("photoComment.\(comment.id.uuidString)")
     }
 }
 
