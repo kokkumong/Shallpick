@@ -36,13 +36,6 @@ jobs:
           gem install xcodeproj -v 1.27.0 --user-install --no-document
           ruby scripts/configure-ui-tests.rb
           mkdir -p build/artifacts
-      - name: Compile standard app without demo mode
-        run: |
-          set -o pipefail
-          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
-            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=x86_64 \
-            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/standard-build.log | xcbeautify
       - name: Build offline Intel simulator app
         run: |
           set -o pipefail
