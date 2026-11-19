@@ -1,0 +1,64 @@
+{
+  "data": "offline demo fixtures; not live Supabase accounts",
+  "screenshots": [
+    {
+      "file": "after-photo-detail.png",
+      "run": "44574218229",
+      "captureCommit": "0527d29ee61048c328ebbffa87ffc0d363eb74a7",
+      "productCommit": "d1bc26246144f778762ac8a0bef5dd602779b317",
+      "nativeAttachment": "7D7FAC56-F00B-4811-B241-3E3F54CD3482.png",
+      "method": "native XCTest screenshot",
+      "sha256": "3d5ea6ff36714efe8e3d7bbf2a5454a6d0617b831545cc71e424acbe6fce0e40",
+      "sha1": "82eabb67ade0cdc96b2b5bd47d0cdeaf73578630"
+    },
+    {
+      "file": "chat-photo-comment.png",
+      "run": "44574218229",
+      "captureCommit": "0527d29ee61048c328ebbffa87ffc0d363eb74a7",
+      "productCommit": "d1bc26246144f778762ac8a0bef5dd602779b317",
+      "nativeAttachment": "01880CC7-4CC4-47EB-A922-1A93E263BD00.png",
+      "method": "native XCTest screenshot",
+      "sha256": "13505fdbc226f22871e5e47365425dd5d0d2f2a6fe90bba051330b04edfbf5c4",
+      "sha1": "f7444a3bdab85ce3e88cc8708540b8eb981fb0b1"
+    },
+    {
+      "file": "first-swipe-guide.png",
+      "run": "44576951615",
+      "captureCommit": "15d0226e2ade0dd438ad3e9cbc13a5a718065205",
+      "productCommit": "b8a9d06",
+      "method": "frame from native simctl recording",
+      "sourceVideo": "demo-flow.mov",
+      "sourceVideoSHA256": "d233bf33eeae143ed29bbcb341a5aa2d4644ba1234d71be967601ffe4875a01d",
+      "seekSeconds": 551.5,
+      "sha256": "d2ab91a3bec4458818f60f7f9abdc174d884d06cca31a9dc9c7bd9ed69165e6e",
+      "sha1": "f2d4519f5bbf20aa821a017dcf92677db155ec61"
+    },
+    {
+      "file": "comment-keyboard.png",
+      "run": "44576951615",
+      "captureCommit": "15d0226e2ade0dd438ad3e9cbc13a5a718065205",
+      "productCommit": "b8a9d06",
+      "method": "frame from native simctl recording",
+      "sourceVideo": "demo-flow.mov",
+      "sourceVideoSHA256": "d233bf33eeae143ed29bbcb341a5aa2d4644ba1234d71be967601ffe4875a01d",
+      "seekSeconds": 483,
+      "sha256": "93beee180a79e4612336a9436948745943c0772d42647709ed89f64107faac2b",
+      "sha1": "ab0f5fe56ee5313fad7904222688e5af858075a2"
+    },
+    {
+      "file": "swipe-guide.gif",
+      "run": "44576951615",
+      "captureCommit": "15d0226e2ade0dd438ad3e9cbc13a5a718065205",
+      "productCommit": "b8a9d06",
+      "method": "clip from native simctl recording",
+      "sourceVideo": "demo-flow.mov",
+      "sourceVideoSHA256": "d233bf33eeae143ed29bbcb341a5aa2d4644ba1234d71be967601ffe4875a01d",
+      "seekSeconds": 550,
+      "durationSeconds": 4.2,
+      "fps": 12,
+      "width": 320,
+      "sha256": "51188302aa3760550fcde8dc744d04417f575d43b02c7d0c9aa6bd921a3cd24b",
+      "sha1": "0c7ad86d2981bc3cc8c157a1dacde1038f9b0ee7"
+    }
+  ]
+}
