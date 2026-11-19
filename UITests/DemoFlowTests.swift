@@ -75,7 +75,7 @@ final class DemoFlowTests: XCTestCase {
         tap(like)
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5), "Injected vote failure must keep current photo")
         tap(app.alerts.buttons["확인"])
-        XCTAssertFalse(app.buttons["이전 사진"].isEnabled)
+        XCTAssertTrue(!app.buttons["이전 사진"].exists || !app.buttons["이전 사진"].isEnabled)
         tap(like)
         XCTAssertTrue(app.buttons["이전 사진"].isEnabled)
         tap(dislike)

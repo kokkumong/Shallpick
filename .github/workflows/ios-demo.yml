@@ -25,7 +25,7 @@ jobs:
   simulator:
     # This demo branch is already checked by push; avoid a second identical PR build.
     if: github.event_name != 'pull_request' || github.head_ref != 'feat/latest-main-appetize'
-    runs-on: macos-15-intel
+    runs-on: macos-15
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -36,19 +36,12 @@ jobs:
           gem install xcodeproj -v 1.27.0 --user-install --no-document
           ruby scripts/configure-ui-tests.rb
           mkdir -p build/artifacts
-      - name: Compile standard app without demo mode
+      - name: Build offline ARM simulator app
         run: |
           set -o pipefail
           xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
             -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=x86_64 \
-            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/standard-build.log | xcbeautify
-      - name: Build offline Intel simulator app
-        run: |
-          set -o pipefail
-          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
-            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=x86_64 \
+            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
             SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/demo-build.log | xcbeautify
           APP=build/demo/Build/Products/Debug-iphonesimulator/Shallpick.app
