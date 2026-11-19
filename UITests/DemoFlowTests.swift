@@ -32,7 +32,7 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "02-selection-after")
         tap(app.buttons["folder.askSelected"])
         XCTAssertTrue(app.staticTexts["질문입력"].waitForExistence(timeout: 10))
-        tap(app.buttons["닫기"].lastMatch)
+        tap(app.buttons.matching(identifier: "닫기").allElementsBoundByIndex.last { $0.isHittable }!)
         tap(app.buttons["선택 끝내기"])
         app.buttons["사진"].firstMatch.press(forDuration: 0.6)
         XCTAssertTrue(app.buttons["folder.askSelected"].waitForExistence(timeout: 5))
@@ -93,3 +93,4 @@ final class DemoFlowTests: XCTestCase {
         XCTAssertTrue(app.buttons["확인하러가기"].waitForExistence(timeout: 5))
     }
 }
+
