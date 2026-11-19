@@ -108,6 +108,9 @@ struct PhotoDetailView: View {
                         .foregroundStyle(Color.black800)
                         .frame(minWidth: 44, minHeight: 44)
                 }
+                .padding(.leading, 12)
+                .padding(.trailing, 4)
+                .background(.regularMaterial, in: Capsule())
             }
             HStack(alignment: .bottom, spacing: 12) {
                 PhotoCommentInputBar(
