@@ -207,7 +207,7 @@ struct ChatView: View {
                     MyMessageRow(
                         message: message,
                         photos: photos,
-                        state: store.deliveryStates[message.id],
+                        state: message.isPhotoComment ? nil : store.deliveryStates[message.id],
                         footer: store.isPhotoQuestion(message) && store.deliveryStates[message.id] == nil
                             ? .checkedBy(store.checkers(of: message), onTap: { review(message) })
                             : nil,

@@ -819,6 +819,7 @@ private struct PhotoCommentInputBar: View {
                 .lineLimit(1...5)
                 .frame(minHeight: 30)
                 .padding(.leading, 12)
+                .padding(.vertical, 7.5)
                 .focused(isFocused)
                 .disabled(isSending)
                 .accessibilityIdentifier("photoDetail.commentInput")
@@ -845,7 +846,7 @@ private struct PhotoCommentInputBar: View {
             .accessibilityIdentifier("photoDetail.sendComment")
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 7.5)
+        .padding(.vertical, 0.5)
         .frame(minHeight: 45)
         .shadowedBackground(.white, in: RoundedRectangle(cornerRadius: 22.5), blur: 20)
     }

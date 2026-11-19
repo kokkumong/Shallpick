@@ -51,6 +51,7 @@ final class ChatStore {
             return
         }
 
+        let pendingAtLoadStart = Set(deliveryStates.keys)
         do {
             async let history = ChatRepository.fetchRecent(folderID: folder.id)
             async let loadedMembers = ChatRepository.fetchMembers(folderID: folder.id)
@@ -61,7 +62,7 @@ final class ChatStore {
             setMembers(try await loadedMembers)
             if let photos = await loadedPhotos { setPhotos(photos) }
             for check in await loadedChecks ?? [] { addCheck(check) }
-            applySnapshot(try await history)
+            applySnapshot(try await history, preserving: pendingAtLoadStart)
             isLoading = false
         } catch {
             handleLoadError(error)
@@ -96,6 +97,7 @@ final class ChatStore {
         snapshotRevision += 1
         let revision = snapshotRevision
         let knownMessageIDs = Set(messages.filter { !$0.isPhotoComment }.map(\.id))
+        let pendingAtRefreshStart = Set(deliveryStates.keys)
         do {
             async let snapshot = ChatRepository.fetchRecent(folderID: folder.id)
             async let photos = PhotoRepository.fetch(folderID: folder.id)
@@ -103,7 +105,7 @@ final class ChatStore {
             guard !Task.isCancelled, revision == snapshotRevision else { return }
             // Keep ordinary messages delivered by realtime while the snapshot was in flight.
             let arrived = messages.filter { !$0.isPhotoComment && !knownMessageIDs.contains($0.id) }
-            applySnapshot(items)
+            applySnapshot(items, preserving: pendingAtRefreshStart)
             for message in arrived { merge(message, confirmed: deliveryStates[message.id] == nil) }
             setPhotos(loadedPhotos)
             if items.contains(where: { members[$0.userID] == nil }),
@@ -115,8 +117,12 @@ final class ChatStore {
         } catch { refreshFailed = true }
     }
 
-    private func applySnapshot(_ items: [ChatMessage]) {
-        let pending = messages.filter { !$0.isPhotoComment && deliveryStates[$0.id] != nil }
+    private func applySnapshot(_ items: [ChatMessage], preserving inFlightIDs: Set<UUID> = []) {
+        // A send can succeed after the query starts. Keep that message even if the
+        // older snapshot does not contain it and its pending flag is already cleared.
+        let pending = messages.filter {
+            !$0.isPhotoComment && (deliveryStates[$0.id] != nil || inFlightIDs.contains($0.id))
+        }
         messages = []
         for item in items { merge(item, confirmed: true) }
         for item in pending where !messages.contains(where: { $0.timelineID == item.timelineID }) {
@@ -145,7 +151,8 @@ final class ChatStore {
     }
 
     func retry(_ id: UUID) {
-        guard deliveryStates[id] == .failed, let message = messages.first(where: { $0.id == id }) else { return }
+        guard deliveryStates[id] == .failed,
+              let message = messages.first(where: { !$0.isPhotoComment && $0.id == id }) else { return }
         deliver(message)
     }
 
