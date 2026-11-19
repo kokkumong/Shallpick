@@ -271,9 +271,15 @@ struct HomeView: View {
             return
         }
 
+        let commentsTask = Task {
+            for await _ in subscription.commentChanges {
+                if let folderID = visibleFolderID { await refreshUnreadCount(folderID: folderID) }
+            }
+        }
         for await message in subscription.messages {
             await handleIncoming(message)
         }
+        commentsTask.cancel()
         await subscription.close()
     }
 

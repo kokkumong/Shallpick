@@ -14,6 +14,12 @@ struct QuestionRespondView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("question.pinGuideSeen") private var pinGuideSeen = false
+    @AppStorage("question.swipeGuideSeen.v1") private var swipeGuideSeen = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isShowingSwipeGuide = false
+    @State private var didLoadResponses = false
+    @State private var readyPhotoID: UUID?
+    @State private var hasCastVote = false
 
     @State private var index = 0
     /// 모든 사진에 좋아/싫어를 남겨서 마무리 카드를 보는 중
@@ -94,6 +100,11 @@ struct QuestionRespondView: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: draftPin) { _, new in new != nil }
         .task { await load() }
         .onDisappear { longPressTask?.cancel() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { isShowingSwipeGuide = false }
+            else { offerSwipeGuide() }
+        }
+        .onChange(of: readyPhotoID) { _, _ in offerSwipeGuide() }
         // 제스처가 끝나지 못하고 취소돼도 상태를 되돌림
         .onChange(of: isPressing) { _, pressing in
             guard !pressing else { return }
@@ -152,6 +163,23 @@ struct QuestionRespondView: View {
             )
         }
         .padding(.bottom, 24)
+        .overlay(alignment: .bottomTrailing) {
+            if currentPhoto != nil, !isShowingSwipeGuide {
+                Button("사용법") {
+                    cancelDraft()
+                    selectedPinID = nil
+                    longPressTask?.cancel()
+                    drag = .zero
+                    isShowingSwipeGuide = true
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.black600)
+                .frame(minWidth: 44, minHeight: 44)
+                .padding(.trailing, 16)
+                .accessibilityIdentifier("question.showSwipeGuide")
+                .disabled(isVoting || !didLoadResponses || readyPhotoID != currentPhoto?.id)
+            }
+        }
     }
 
     @ViewBuilder
@@ -161,9 +189,17 @@ struct QuestionRespondView: View {
                 photoCard(photo, size: size)
                     .id(photo.id)
                     .transition(photoTransition)
+                    .allowsHitTesting(!isShowingSwipeGuide)
+                    .accessibilityHidden(isShowingSwipeGuide)
             } else if isShowingDone {
                 doneCard
                     .transition(reduceMotion ? .opacity : .scale(scale: 0.98).combined(with: .opacity))
+            }
+            if isShowingSwipeGuide {
+                SwipeGuideView {
+                    swipeGuideSeen = true
+                    isShowingSwipeGuide = false
+                }
             }
         }
         .frame(width: size.width, height: size.height)
@@ -174,7 +210,7 @@ struct QuestionRespondView: View {
         let flyDistance = abs(drag.height)
 
         return ZStack(alignment: .topLeading) {
-            QuestionPhotoImage(url: photo.url)
+            QuestionPhotoImage(url: photo.url, onReady: { readyPhotoID = photo.id })
                 .frame(width: size.width, height: size.height)
                 .contentShape(RoundedRectangle(cornerRadius: 20))
                 .gesture(photoGesture(photo: photo, size: size))
@@ -210,7 +246,8 @@ struct QuestionRespondView: View {
             }
 
             // 처음 들어왔을 때만: 길게 눌러 댓글 남기기 안내 (요청응답_가이드)
-            if !pinGuideSeen, draftPin == nil, photoPins.isEmpty, drag == .zero {
+            if !isShowingSwipeGuide, (hasCastVote || !votes.isEmpty), !pinGuideSeen,
+               draftPin == nil, photoPins.isEmpty, drag == .zero {
                 pinGuide(size: size)
                     .allowsHitTesting(false)
                     .transition(.opacity)
@@ -359,7 +396,7 @@ struct QuestionRespondView: View {
         DragGesture(minimumDistance: 0)
             .updating($isPressing) { _, pressing, _ in pressing = true }
             .onChanged { value in
-                guard !isVoting else { return }
+                guard !isVoting, !isShowingSwipeGuide else { return }
                 if touchStart != value.startLocation {
                     touchStart = value.startLocation
                     didLongPress = false
@@ -436,7 +473,7 @@ struct QuestionRespondView: View {
     }
 
     private func canPage(_ step: Int) -> Bool {
-        guard !isVoting else { return false }
+        guard !isVoting, !isShowingSwipeGuide else { return false }
         if step < 0 {
             return isShowingDone || index > 0
         }
@@ -465,7 +502,8 @@ struct QuestionRespondView: View {
     // MARK: - 좋아/싫어
 
     private func vote(_ vote: QuestionVote, photo: PhotoItem) {
-        guard !isVoting, currentPhoto?.id == photo.id else { return }
+        guard !isVoting, !isShowingSwipeGuide, currentPhoto?.id == photo.id else { return }
+        hasCastVote = true
         isVoting = true
         cancelDraft()
         selectedPinID = nil
@@ -605,9 +643,18 @@ struct QuestionRespondView: View {
             if let first = photos.firstIndex(where: { votes[$0.id] == nil }), index == 0 {
                 index = first
             }
+            didLoadResponses = true
+            offerSwipeGuide()
         } catch is CancellationError {
         } catch {
             print("[Question] 응답 불러오기 실패:", error)
         }
+    }
+
+    private func offerSwipeGuide() {
+        guard !swipeGuideSeen, didLoadResponses, scenePhase == .active,
+              let photo = currentPhoto, readyPhotoID == photo.id,
+              !isVoting, draftPin == nil, drag == .zero else { return }
+        isShowingSwipeGuide = true
     }
 }

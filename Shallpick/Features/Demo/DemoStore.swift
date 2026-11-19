@@ -30,7 +30,12 @@ final class DemoStore {
 
     private init() { reset() }
 
+    var failNextPhotoComment = ProcessInfo.processInfo.arguments.contains("-failFirstPhotoComment")
     func begin() {
+        if ProcessInfo.processInfo.arguments.contains("-freshGuide") {
+            UserDefaults.standard.removeObject(forKey: "question.swipeGuideSeen.v1")
+            UserDefaults.standard.removeObject(forKey: "photo.commentSharingHintSeen")
+        }
         guard Self.isAvailable else { return }
         reset()
         isActive = true
@@ -88,7 +93,14 @@ final class DemoStore {
     }
 
     func photos(in folderID: UUID) -> [PhotoItem] { photoLists[folderID] ?? [] }
-    func messages(in folderID: UUID) -> [ChatMessage] { conversations[folderID] ?? [] }
+    func messages(in folderID: UUID) -> [ChatMessage] {
+        let ids = Set(photos(in: folderID).map(\.id))
+        let comments = photoComments.filter { ids.contains($0.photoID) }.map {
+            ChatMessage(id: $0.id, folderID: folderID, userID: $0.userID, body: $0.body,
+                createdAt: $0.createdAt, photoIDs: [$0.photoID], sourceCommentID: $0.id)
+        }
+        return ((conversations[folderID] ?? []) + comments).sorted { $0.createdAt < $1.createdAt }
+    }
 
     func create(name: String) -> Folder {
         let folder = Folder(id: UUID(), name: String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(FolderRepository.maxNameLength)),
