@@ -1,0 +1,29 @@
+name: Photo comment timeline
+on:
+  push:
+    branches: ['feat/photo-detail-comment-guide']
+    paths: ['supabase/migrations/**', 'tests/sql/**', '.github/workflows/comment-timeline-test.yml']
+  pull_request:
+    paths: ['supabase/migrations/**', 'tests/sql/**', '.github/workflows/comment-timeline-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  database:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: timeline_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Verify real migrations, RLS, deletion, source identity and unread counts
+        env:
+          PGPASSWORD: test-only
+        run: psql -h localhost -U postgres -d timeline_test -v ON_ERROR_STOP=1 -f tests/sql/photo_comment_timeline.sql
