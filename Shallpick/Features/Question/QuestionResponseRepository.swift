@@ -82,6 +82,7 @@ enum QuestionResponseRepository {
 
     /// userID 를 주면 그 사람 것만
     static func fetchVotes(messageID: UUID, userID: UUID? = nil) async throws -> [QuestionVoteRecord] {
+        if DemoStore.shared.isActive { return DemoStore.shared.questionVotes.filter { $0.messageID == messageID && (userID == nil || $0.userID == userID) } }
         var query = try client
             .from("question_votes")
             .select("message_id, photo_id, user_id, vote, created_at")
@@ -95,6 +96,7 @@ enum QuestionResponseRepository {
 
     /// 오래된 것 → 최신 순. userID 를 주면 그 사람 것만
     static func fetchPins(messageID: UUID, userID: UUID? = nil) async throws -> [QuestionPin] {
+        if DemoStore.shared.isActive { return DemoStore.shared.questionPins.filter { $0.messageID == messageID && (userID == nil || $0.userID == userID) } }
         var query = try client
             .from("question_pins")
             .select()
@@ -108,6 +110,7 @@ enum QuestionResponseRepository {
 
     /// 이미 남겼으면 바꿈
     static func setVote(_ vote: QuestionVote, messageID: UUID, folderID: UUID, photoID: UUID) async throws {
+        if DemoStore.shared.isActive { DemoStore.shared.setVote(vote, messageID: messageID, photoID: photoID); return }
         try await client
             .from("question_votes")
             .upsert(
@@ -127,7 +130,13 @@ enum QuestionResponseRepository {
         y: Double,
         body: String
     ) async throws -> QuestionPin {
-        try await client
+        if DemoStore.shared.isActive {
+            let pin = QuestionPin(id: id, messageID: messageID, photoID: photoID, userID: DemoStore.shared.userID,
+                x: min(max(x, 0), 1), y: min(max(y, 0), 1), body: String(body.prefix(maxPinLength)), createdAt: .now)
+            DemoStore.shared.questionPins.append(pin)
+            return pin
+        }
+        return try await client
             .from("question_pins")
             .insert(NewPin(id: id, message_id: messageID, photo_id: photoID, folder_id: folderID, x: x, y: y, body: body))
             .select()
@@ -137,6 +146,7 @@ enum QuestionResponseRepository {
     }
 
     static func deletePin(id: UUID) async throws {
+        if DemoStore.shared.isActive { DemoStore.shared.questionPins.removeAll { $0.id == id && $0.userID == DemoStore.shared.userID }; return }
         try await client
             .from("question_pins")
             .delete()

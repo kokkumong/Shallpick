@@ -1,0 +1,127 @@
+name: iOS browser demo
+
+on:
+  push:
+    branches: [main, feat/latest-main-appetize, 'ci/figma-review-*']
+    paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
+  pull_request:
+    branches: [main]
+    paths: ['Shallpick/**', 'Shallpick.xcodeproj/**', 'Config/**', 'UITests/**', 'scripts/**', '.github/workflows/ios-demo.yml']
+  workflow_dispatch:
+    inputs:
+      run_ui_tests:
+        description: 'Run native UI tests (requires a working hosted simulator runtime)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-demo-${{ github.head_ref || github.ref_name }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  simulator:
+    # This demo branch is already checked by push; avoid a second identical PR build.
+    if: github.event_name != 'pull_request' || github.head_ref != 'feat/latest-main-appetize'
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Select Xcode and prepare test scheme
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+          gem install xcodeproj -v 1.27.0 --user-install --no-document
+          ruby scripts/configure-ui-tests.rb
+          mkdir -p build/artifacts
+      - name: Compile standard app without demo mode
+        run: |
+          set -o pipefail
+          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/standard-build.log | xcbeautify
+      - name: Build offline ARM simulator app
+        run: |
+          set -o pipefail
+          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/demo CODE_SIGNING_ALLOWED=NO ARCHS=arm64 \
+            SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
+            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= build 2>&1 | tee build/demo-build.log | xcbeautify
+          APP=build/demo/Build/Products/Debug-iphonesimulator/Shallpick.app
+          test -d "$APP"
+          xcrun lipo -archs "$APP/Shallpick"
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP/Info.plist" | grep -x iPhoneSimulator
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" build/artifacts/Shallpick-Appetize.zip
+          unzip -Z1 build/artifacts/Shallpick-Appetize.zip | grep -x 'Shallpick.app/Info.plist'
+          shasum -a 256 build/artifacts/Shallpick-Appetize.zip > build/artifacts/SHA256.txt
+          printf 'Commit: %s\nRun: %s/%s/actions/runs/%s\n' "$GITHUB_SHA" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > build/artifacts/BUILD.txt
+      - name: Publish Appetize upload bundle
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Shallpick-Appetize-${{ github.sha }}
+          path: build/artifacts/
+          retention-days: 14
+          if-no-files-found: error
+      - name: Exercise demo on iPhone simulator
+        if: github.ref == 'refs/heads/feat/latest-main-appetize' || startsWith(github.ref, 'refs/heads/ci/figma-review-') || (github.event_name == 'workflow_dispatch' && inputs.run_ui_tests)
+        timeout-minutes: 20
+        run: |
+          set -o pipefail
+          python3 scripts/boot-review-simulator.py
+          DEVICE=$(cat build/device.txt)
+          APP=build/demo/Build/Products/Debug-iphonesimulator/Shallpick.app
+          BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")
+          xcrun simctl install "$DEVICE" "$APP"
+          xcrun simctl privacy "$DEVICE" grant photos "$BUNDLE"
+          xcrun simctl addmedia "$DEVICE" Shallpick/Assets.xcassets/DemoPhoto*.imageset/photo.jpg
+          xcrun simctl io "$DEVICE" recordVideo --codec=h264 build/demo-flow.mov &
+          VIDEO_PID=$!
+          trap 'kill -INT "$VIDEO_PID" 2>/dev/null || true; wait "$VIDEO_PID" || true' EXIT
+          xcodebuild -project Shallpick.xcodeproj -scheme ShallpickDemoCI \
+            -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" \
+            -derivedDataPath build/demo -resultBundlePath build/DemoTests.xcresult \
+            CODE_SIGNING_ALLOWED=NO SHALLPICK_DEMO_CONDITION=SHALLPICK_DEMO \
+            KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= \
+            -parallel-testing-enabled NO \
+            -only-testing:ShallpickUITests/DemoFlowTests/testAdditionalReviewScreens \
+            -only-testing:ShallpickUITests/DemoFlowTests/testLatestQuestionFlow \
+            -only-testing:ShallpickUITests/DemoFlowTests/testQuestionAlertAndEmptyFolder \
+            -only-testing:ShallpickUITests/DemoFlowTests/testMainUpdates \
+            test 2>&1 | tee build/ui-tests.log | xcbeautify
+      - name: Export actual simulator screenshots
+        if: always()
+        run: |
+          if [ -d build/DemoTests.xcresult ]; then
+            xcrun xcresulttool export attachments --path build/DemoTests.xcresult --output-path build/screenshots
+          fi
+      - name: Publish verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: iOS-demo-verification-${{ github.sha }}
+          path: |
+            build/*.log
+            build/device.txt
+            build/demo-flow.mov
+            build/screenshots/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Publish review captures without video
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: review-captures-${{ github.sha }}
+          path: |
+            build/standard-build.log
+            build/demo-build.log
+            build/ui-tests.log
+            build/device.txt
+            build/screenshots/
+          retention-days: 14
+          if-no-files-found: warn

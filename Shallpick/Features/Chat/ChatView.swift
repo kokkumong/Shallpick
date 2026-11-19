@@ -573,7 +573,7 @@ struct ChatAvatar: View {
     let url: URL?
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        AppImage(url: url) { phase in
             if let image = phase.image {
                 image.resizable().scaledToFill()
             } else {
@@ -756,7 +756,7 @@ private struct ChatPhotoViewer: View {
     var body: some View {
         TabView(selection: $selection) {
             ForEach(photos) { photo in
-                AsyncImage(url: photo.url) { phase in
+                AppImage(url: photo.url) { phase in
                     if let image = phase.image {
                         image.resizable().scaledToFit()
                     } else if phase.error != nil {

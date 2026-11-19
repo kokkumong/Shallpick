@@ -55,6 +55,7 @@ enum FolderRepository {
 
     /// 내가 참여한 폴더 (최근 참여 순)
     static func fetchMine() async throws -> [Folder] {
+        if DemoStore.shared.isActive { return DemoStore.shared.folders }
         guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
         return try await client
             .rpc("my_folders")
@@ -63,6 +64,7 @@ enum FolderRepository {
     }
 
     static func create(name: String) async throws -> Folder {
+        if DemoStore.shared.isActive { return DemoStore.shared.create(name: name) }
         guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
         return try await client
             .rpc("create_folder", params: ["folder_name": name])
@@ -82,6 +84,7 @@ enum FolderRepository {
     }
 
     static func join(code: String) async throws -> Folder {
+        if DemoStore.shared.isActive { return try DemoStore.shared.join(code: code) }
         guard let client = SupabaseManager.client else { throw FolderError.notConfigured }
         do {
             return try await client

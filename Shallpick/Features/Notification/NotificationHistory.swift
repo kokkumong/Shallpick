@@ -35,6 +35,15 @@ enum NotificationHistory {
     static let questionLimit = 30
 
     static func fetch(folders: [Folder], userID: UUID) async throws -> [NotificationItem] {
+        if DemoStore.shared.isActive {
+            return folders.flatMap { folder in
+                DemoStore.shared.messages(in: folder.id).filter { $0.userID != userID && $0.recipientIDs.contains(userID) }.map { message in
+                    NotificationItem(id: message.id.uuidString, folder: folder,
+                        kind: .question(text: "하늘님이 사진 \(message.photoIDs.count)장에 대한 질문을 올렸어요!"),
+                        createdAt: message.createdAt, isUnread: true)
+                }
+            }.sorted { $0.createdAt > $1.createdAt }
+        }
         guard !folders.isEmpty else { return [] }
         guard let client = SupabaseManager.client else { throw FolderRepository.FolderError.notConfigured }
 

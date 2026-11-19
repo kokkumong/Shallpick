@@ -5,3 +5,5 @@ SUPABASE_URL =
 SUPABASE_KEY =
 
 #include? "Secrets.xcconfig"
+// Opt-in for this app target only; do not replace Swift package compilation flags.
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) $(SHALLPICK_DEMO_CONDITION)

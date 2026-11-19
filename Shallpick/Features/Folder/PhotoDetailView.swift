@@ -187,7 +187,7 @@ struct PhotoDetailView: View {
     // MARK: - 불러오기
 
     private func loadMembers() async {
-        guard SupabaseManager.client != nil else { return }
+        guard DemoStore.shared.isActive || SupabaseManager.client != nil else { return }
         do {
             let list = try await ChatRepository.fetchMembers(folderID: folder.id)
             members = Dictionary(list.map { ($0.userID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -197,7 +197,7 @@ struct PhotoDetailView: View {
     }
 
     private func loadFeedback(photoID: UUID) async {
-        guard SupabaseManager.client != nil else { return }
+        guard DemoStore.shared.isActive || SupabaseManager.client != nil else { return }
         do {
             async let reactions = PhotoFeedbackRepository.fetchReactions(photoID: photoID)
             async let comments = PhotoFeedbackRepository.fetchComments(photoID: photoID)
@@ -519,6 +519,7 @@ private struct DetailPhotoImage: View {
             .clipShape(RoundedRectangle(cornerRadius: 30))
             .task(id: url) {
                 guard let url, image == nil else { return }
+                if url.scheme == "demo-asset" { image = UIImage(named: url.lastPathComponent); return }
                 guard let (data, _) = try? await URLSession.shared.data(from: url),
                       let loaded = await Self.decode(data)
                 else { return }
@@ -722,7 +723,7 @@ private struct PhotoCommentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            AsyncImage(url: member?.avatarURL.flatMap(URL.init(string:))) { phase in
+            AppImage(url: member?.avatarURL.flatMap(URL.init(string:))) { phase in
                 if let image = phase.image {
                     image.resizable().scaledToFill()
                 } else {
