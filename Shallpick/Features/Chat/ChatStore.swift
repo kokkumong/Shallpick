@@ -25,6 +25,8 @@ final class ChatStore {
     private var photosByID: [UUID: PhotoItem] = [:]
     private(set) var isLoading = true
     private(set) var loadFailed = false
+    private(set) var refreshFailed = false
+    private var snapshotRevision = 0
 
     init(folder: Folder, myUserID: UUID? = SupabaseManager.client?.auth.currentUser?.id) {
         self.folder = folder
@@ -59,7 +61,7 @@ final class ChatStore {
             setMembers(try await loadedMembers)
             if let photos = await loadedPhotos { setPhotos(photos) }
             for check in await loadedChecks ?? [] { addCheck(check) }
-            for message in try await history { merge(message, confirmed: true) }
+            applySnapshot(try await history)
             isLoading = false
         } catch {
             handleLoadError(error)
@@ -67,6 +69,9 @@ final class ChatStore {
 
         let checksTask = Task {
             for await check in subscription.checks { addCheck(check) }
+        }
+        let commentsTask = Task {
+            for await _ in subscription.commentChanges { await refreshTimeline() }
         }
         for await message in subscription.messages {
             merge(message, confirmed: true)
@@ -81,7 +86,42 @@ final class ChatStore {
             }
         }
         checksTask.cancel()
+        commentsTask.cancel()
         await subscription.close()
+    }
+
+    /// A snapshot also removes deleted/cascaded comments. Pending ordinary messages stay visible.
+    func refreshTimeline() async {
+        guard !isPreview else { return }
+        snapshotRevision += 1
+        let revision = snapshotRevision
+        let knownMessageIDs = Set(messages.filter { !$0.isPhotoComment }.map(\.id))
+        do {
+            async let snapshot = ChatRepository.fetchRecent(folderID: folder.id)
+            async let photos = PhotoRepository.fetch(folderID: folder.id)
+            let (items, loadedPhotos) = try await (snapshot, photos)
+            guard !Task.isCancelled, revision == snapshotRevision else { return }
+            // Keep ordinary messages delivered by realtime while the snapshot was in flight.
+            let arrived = messages.filter { !$0.isPhotoComment && !knownMessageIDs.contains($0.id) }
+            applySnapshot(items)
+            for message in arrived { merge(message, confirmed: deliveryStates[message.id] == nil) }
+            setPhotos(loadedPhotos)
+            if items.contains(where: { members[$0.userID] == nil }),
+               let reloaded = try? await ChatRepository.fetchMembers(folderID: folder.id) {
+                setMembers(reloaded)
+            }
+            refreshFailed = false
+        } catch is CancellationError {
+        } catch { refreshFailed = true }
+    }
+
+    private func applySnapshot(_ items: [ChatMessage]) {
+        let pending = messages.filter { !$0.isPhotoComment && deliveryStates[$0.id] != nil }
+        messages = []
+        for item in items { merge(item, confirmed: true) }
+        for item in pending where !messages.contains(where: { $0.timelineID == item.timelineID }) {
+            merge(item, confirmed: false)
+        }
     }
 
     /// photos: 질문에 붙일 폴더 사진 (고른 순서)
@@ -129,7 +169,7 @@ final class ChatStore {
 
     /// 사진이 붙은 메시지(질문)에는 말풍선 아래에 확인 블럭이 붙음
     func isPhotoQuestion(_ message: ChatMessage) -> Bool {
-        !message.photoIDs.isEmpty
+        !message.isPhotoComment && !message.photoIDs.isEmpty
     }
 
     /// 이 질문을 확인한 멤버 (보낸 사람 빼고, 확인한 순서)
@@ -141,7 +181,7 @@ final class ChatStore {
 
     /// 다른 사람의 질문에서 "확인하러가기"를 누르면 확인했다고 남김 (한 번만)
     func markChecked(_ message: ChatMessage) {
-        guard let myUserID, !isMine(message), !(checks[message.id] ?? []).contains(myUserID) else { return }
+        guard isPhotoQuestion(message), let myUserID, !isMine(message), !(checks[message.id] ?? []).contains(myUserID) else { return }
         // 저장된 값이 Realtime 으로 다시 와도 addCheck 가 중복을 거름
         addCheck(MessageCheck(messageID: message.id, userID: myUserID, checkedAt: .now))
         guard !isPreview else { return }
@@ -199,14 +239,18 @@ final class ChatStore {
     /// 같은 id 가 있으면 새 값으로 바꾸고, 없으면 시간 순서 자리에 끼워 넣습니다.
     /// confirmed: 서버에 저장된 값(조회 / 실시간 / 보내기 응답)
     private func merge(_ message: ChatMessage, confirmed: Bool) {
-        if confirmed { deliveryStates[message.id] = nil }
-        if let index = messages.firstIndex(where: { $0.id == message.id }) {
+        if confirmed, !message.isPhotoComment { deliveryStates[message.id] = nil }
+        if let index = messages.firstIndex(where: { $0.timelineID == message.timelineID }) {
             messages[index] = message
-            if !messages.isSorted() { messages.sort { $0.createdAt < $1.createdAt } }
+            messages.sort(by: Self.isEarlier)
             return
         }
-        let index = messages.lastIndex { $0.createdAt <= message.createdAt }.map { $0 + 1 } ?? 0
-        messages.insert(message, at: index)
+        messages.append(message)
+        messages.sort(by: Self.isEarlier)
+    }
+
+    private static func isEarlier(_ lhs: ChatMessage, _ rhs: ChatMessage) -> Bool {
+        lhs.createdAt == rhs.createdAt ? lhs.timelineID < rhs.timelineID : lhs.createdAt < rhs.createdAt
     }
 }
 
