@@ -90,6 +90,7 @@ jobs:
             KAKAO_NATIVE_APP_KEY= SUPABASE_URL= SUPABASE_KEY= \
             -parallel-testing-enabled NO \
             -only-testing:ShallpickUITests/DemoFlowTests/testCommentAndGuide \
+            -only-testing:ShallpickUITests/DemoFlowTests/testFirstSwipeGuide \
             test 2>&1 | tee build/ui-tests.log | xcbeautify
       - name: Export actual simulator screenshots
         if: always()
