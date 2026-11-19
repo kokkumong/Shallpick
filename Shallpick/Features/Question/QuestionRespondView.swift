@@ -93,6 +93,8 @@ struct QuestionRespondView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: votes)
         .sensoryFeedback(.impact(weight: .medium), trigger: draftPin) { _, new in new != nil }
         .task { await load() }
+        // 다음에 볼 사진을 미리 풀어 둬야 좋아/싫어로 넘길 때 끊기지 않음
+        .onChange(of: index, initial: true) { _, current in prefetchPhotos(around: current) }
         .onDisappear { longPressTask?.cancel() }
         // 제스처가 끝나지 못하고 취소돼도 상태를 되돌림
         .onChange(of: isPressing) { _, pressing in
@@ -498,10 +500,22 @@ struct QuestionRespondView: View {
         }
     }
 
+    /// 지금 사진 앞뒤 + 좋아/싫어 하면 넘어갈 사진
+    private func prefetchPhotos(around current: Int) {
+        var targets = Array((current - 1)...(current + 2))
+        if let next = nextUnvotedIndex(after: current) { targets.append(next) }
+        let urls = targets.compactMap { photos.indices.contains($0) ? photos[$0].url : nil }
+        QuestionPhotoLoader.shared.prefetch(urls)
+    }
+
+    private func nextUnvotedIndex(after current: Int) -> Int? {
+        let order = (1...max(photos.count, 1)).map { (current + $0) % max(photos.count, 1) }
+        return order.first { photos.indices.contains($0) && votes[photos[$0].id] == nil }
+    }
+
     /// 아직 의견을 안 남긴 다음 사진으로. 다 남겼으면 마무리 카드
     private func showNextUnvoted(after current: Int) {
-        let order = (1...max(photos.count, 1)).map { (current + $0) % max(photos.count, 1) }
-        let next = order.first { photos.indices.contains($0) && votes[photos[$0].id] == nil }
+        let next = nextUnvotedIndex(after: current)
         isVoting = false
         withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .smooth(duration: 0.28)) {
             drag = .zero
