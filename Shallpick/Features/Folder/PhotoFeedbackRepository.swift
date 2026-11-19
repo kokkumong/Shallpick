@@ -110,7 +110,7 @@ enum PhotoFeedbackRepository {
             // A timeout can follow a successful insert. Reuse that row on retry.
             if let saved: PhotoComment = try? await client.from("photo_comments")
                 .select().eq("id", value: id).single().execute().value,
-               saved.photoID == photoID, saved.body == body,
+               saved.photoID == photoID,
                saved.userID == PhotoRepository.currentUserID {
                 return saved
             }

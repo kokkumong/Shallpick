@@ -299,7 +299,8 @@ struct PhotoDetailView: View {
         guard let photo = currentPhoto, let me = myUserID else { return }
         guard !sendingPhotos.contains(photo.id) else { return }
         let text = drafts[photo.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines)
-        let pending = pendingComments[photo.id] ?? (id: UUID(), body: text)
+        // Reuse the request ID, but send the text currently shown in the field.
+        let pending = (id: pendingComments[photo.id]?.id ?? UUID(), body: text)
         guard !pending.body.isEmpty else { return }
         pendingComments[photo.id] = pending
         sendingPhotos.insert(photo.id)
@@ -312,8 +313,11 @@ struct PhotoDetailView: View {
                 if !feedback[photo.id, default: PhotoFeedback()].comments.contains(where: { $0.id == saved.id }) {
                     feedback[photo.id, default: PhotoFeedback()].comments.append(saved)
                 }
-                if drafts[photo.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines) == pending.body {
+                if drafts[photo.id, default: ""].trimmingCharacters(in: .whitespacesAndNewlines) == saved.body {
                     drafts[photo.id] = ""
+                }
+                if saved.body != pending.body {
+                    showNotice("이전 댓글은 저장됐어요. 수정한 내용은 입력창에 남겨뒀어요.")
                 }
                 pendingComments[photo.id] = nil
                 sharingHintSeen = true
