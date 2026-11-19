@@ -11,6 +11,8 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
     var photoIDs: [UUID] = []
     /// 질문을 받을 멤버. 비어 있으면 폴더 모두 (보통 채팅)
     var recipientIDs: [UUID] = []
+    /// Present only on the read-only chat timeline projection. Never sent to messages.
+    var sourceCommentID: UUID?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -20,6 +22,7 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         case createdAt = "created_at"
         case photoIDs = "photo_ids"
         case recipientIDs = "recipient_ids"
+        case sourceCommentID = "source_comment_id"
     }
 
     init(
@@ -29,7 +32,8 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         body: String,
         createdAt: Date,
         photoIDs: [UUID] = [],
-        recipientIDs: [UUID] = []
+        recipientIDs: [UUID] = [],
+        sourceCommentID: UUID? = nil
     ) {
         self.id = id
         self.folderID = folderID
@@ -38,10 +42,11 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         self.createdAt = createdAt
         self.photoIDs = photoIDs
         self.recipientIDs = recipientIDs
+        self.sourceCommentID = sourceCommentID
     }
 
     /// 수달로 받을 사람을 골라 보낸 질문 (보통 채팅은 받을 사람이 비어 있음)
-    var isQuestion: Bool { !recipientIDs.isEmpty }
+    var isQuestion: Bool { sourceCommentID == nil && !recipientIDs.isEmpty }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -52,6 +57,7 @@ nonisolated struct ChatMessage: Codable, Sendable, Identifiable, Hashable {
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         photoIDs = try container.decodeIfPresent([UUID].self, forKey: .photoIDs) ?? []
         recipientIDs = try container.decodeIfPresent([UUID].self, forKey: .recipientIDs) ?? []
+        sourceCommentID = try container.decodeIfPresent(UUID.self, forKey: .sourceCommentID)
     }
 }
 
@@ -94,7 +100,7 @@ enum ChatRepository {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return try await client
-            .from("messages")
+            .from("folder_chat_timeline")
             .select("id", head: true, count: .exact)
             .eq("folder_id", value: folderID)
             .neq("user_id", value: userID)
@@ -145,10 +151,11 @@ enum ChatRepository {
     static func fetchRecent(folderID: UUID) async throws -> [ChatMessage] {
         if DemoStore.shared.isActive { return DemoStore.shared.messages(in: folderID) }
         let latestFirst: [ChatMessage] = try await client
-            .from("messages")
+            .from("folder_chat_timeline")
             .select()
             .eq("folder_id", value: folderID)
             .order("created_at", ascending: false)
+            .order("entry_id", ascending: false)
             .limit(historyLimit)
             .execute()
             .value
@@ -225,6 +232,8 @@ enum ChatRepository {
         let messages: AsyncStream<ChatMessage>
         /// 새로 남은 질문 확인 기록 (includeChecks 일 때만)
         let checks: AsyncStream<MessageCheck>
+        /// Invalidate the projection on comment insert/delete; payloads aren't copied into messages.
+        var commentChanges: AsyncStream<Void> = AsyncStream { $0.finish() }
         /// 다 쓰면(화면을 나가면) 불러서 채널을 정리
         let close: () async -> Void
     }
@@ -250,13 +259,27 @@ enum ChatRepository {
             table: "message_checks",
             filter: folderID.map { .eq("folder_id", value: $0.uuidString.lowercased()) }
         ) : nil
+        let commentEvents = channel.postgresChange(
+            AnyAction.self, schema: "public", table: "photo_comments"
+        )
         try await channel.subscribeWithError()
 
         return Subscription(
             messages: records(of: inserts, as: ChatMessage.self),
             checks: checkInserts.map { records(of: $0, as: MessageCheck.self) } ?? AsyncStream { $0.finish() },
+            commentChanges: invalidations(of: commentEvents),
             close: { await client.removeChannel(channel) }
         )
+    }
+
+    private static func invalidations(of changes: AsyncStream<AnyAction>) -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await _ in changes { continuation.yield(()) }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
     }
 
     private static func records<Record: Decodable & Sendable>(

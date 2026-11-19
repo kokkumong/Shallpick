@@ -112,6 +112,7 @@ struct QuestionChevronButton: View {
 /// 질문 사진 (모서리 20, 꽉 채움)
 struct QuestionPhotoImage: View {
     let url: URL?
+    var onReady: () -> Void = {}
 
     var body: some View {
         RoundedRectangle(cornerRadius: 20)
@@ -119,7 +120,7 @@ struct QuestionPhotoImage: View {
             .overlay {
                 AppImage(url: url) { phase in
                     if let image = phase.image {
-                        image.resizable().scaledToFill()
+                        image.resizable().scaledToFill().onAppear(perform: onReady)
                     } else if phase.error != nil {
                         Image(systemName: "photo")
                             .font(.system(size: 28))
