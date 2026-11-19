@@ -368,6 +368,9 @@ private struct PhotoDetailPage: View {
     @State private var touchStart: CGPoint?
     @State private var pressTask: Task<Void, Never>?
     @GestureState private var isPressing = false
+    @State private var heartBurst = 0
+    @State private var isShowingHeart = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var locatedComments: [PhotoComment] { feedback.comments.filter { $0.x != nil && $0.y != nil } }
     private var legacyComments: [PhotoComment] { feedback.comments.filter { $0.x == nil || $0.y == nil } }
@@ -419,11 +422,36 @@ private struct PhotoDetailPage: View {
             Color.clear
                 .contentShape(RoundedRectangle(cornerRadius: 30))
                 .simultaneousGesture(commentGesture(in: size))
-                .onTapGesture(count: 2, perform: onDoubleTap)
+                .onTapGesture(count: 2) {
+                    let wasHearted = feedback.reactions.contains {
+                        $0.userID == myUserID && $0.emoji == PhotoFeedbackRepository.heart
+                    }
+                    onDoubleTap()
+                    heartBurst += 1
+                    let burst = heartBurst
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.55)) {
+                        isShowingHeart = !wasHearted
+                    }
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.7))
+                        guard burst == heartBurst else { return }
+                        withAnimation(.easeOut(duration: 0.25)) { isShowingHeart = false }
+                    }
+                }
+                .sensoryFeedback(.impact(weight: .light), trigger: heartBurst)
                 .accessibilityLabel("사진")
                 .accessibilityIdentifier("photo.detailImage")
                 .accessibilityAction(named: "댓글 남기기") { onLongPress(CGPoint(x: 0.5, y: 0.5)) }
                 .accessibilityAction(named: "하트 남기기", onDoubleTap)
+            Image(systemName: "heart.fill")
+                .font(.system(size: 96))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.25), radius: 12)
+                .scaleEffect(isShowingHeart || reduceMotion ? 1 : 0.4)
+                .opacity(isShowingHeart ? 1 : 0)
+                .position(x: size.width / 2, y: size.height / 2)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             ForEach(locatedComments) { comment in
                 Button {
                     openedCommentID = openedCommentID == comment.id ? nil : comment.id
@@ -454,12 +482,13 @@ private struct PhotoDetailPage: View {
                         Text(members[comment.userID]?.nickname ?? "샬픽 사용자")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundStyle(Color.black600)
-                        ScrollView {
+                        ViewThatFits(in: .vertical) {
                             Text(comment.body)
+                                .fixedSize(horizontal: false, vertical: true)
+                            ScrollView { Text(comment.body).frame(maxWidth: .infinity, alignment: .leading) }
+                        }
                                 .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(Color.black800)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
                         .frame(maxHeight: 90)
                     }
                 }

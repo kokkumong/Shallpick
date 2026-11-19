@@ -176,39 +176,39 @@ struct FolderDetailView: View {
 
     @ViewBuilder
     private var content: some View {
-            PhotoGrid(
-                photos: photos.filtered(by: filters),
-                namespace: photoNamespace,
-                selection: selection,
-                onLongPress: { photo in
-                    isShowingFilterMenu = false
-                    selection = [photo.id]
-                },
-                onToggle: { photo in
-                    guard var current = selection else { return }
-                    if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
-                    selection = current
-                },
-                onDragSelect: { changes in
-                    guard var current = selection else { return }
-                    for change in changes {
-                        if change.selected { current.insert(change.id) } else { current.remove(change.id) }
-                    }
-                    selection = current
-                },
-                onAdd: {
-                    isShowingFilterMenu = false
-                    isShowingPhotoPicker = true
-                },
-                onOpen: { photo in
-                    isShowingFilterMenu = false
-                    openedPhoto = photo
+        PhotoGrid(
+            photos: photos.filtered(by: filters),
+            namespace: photoNamespace,
+            selection: selection,
+            onLongPress: { photo in
+                isShowingFilterMenu = false
+                selection = [photo.id]
+            },
+            onToggle: { photo in
+                guard var current = selection else { return }
+                if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
+                selection = current
+            },
+            onDragSelect: { changes in
+                guard var current = selection else { return }
+                for change in changes {
+                    if change.selected { current.insert(change.id) } else { current.remove(change.id) }
                 }
-            )
-            .refreshable { await reload() }
-            .overlay {
-                if photos.isEmpty { EmptyPhotoView().allowsHitTesting(false) }
+                selection = current
+            },
+            onAdd: {
+                isShowingFilterMenu = false
+                isShowingPhotoPicker = true
+            },
+            onOpen: { photo in
+                isShowingFilterMenu = false
+                openedPhoto = photo
             }
+        )
+        .refreshable { await reload() }
+        .overlay {
+            if photos.isEmpty { EmptyPhotoView().allowsHitTesting(false) }
+        }
     }
 
     private func reload() async {
@@ -426,14 +426,14 @@ struct FolderDetailView: View {
             Spacer()
 
             if selection != nil {
-                    CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "고른 사진으로 질문 보내기") {
-                        guard !selectedPhotos.isEmpty else { return }
-                        isShowingFilterMenu = false
-                        isShowingQuestionCompose = true
-                    }
-                    .disabled(selectedPhotos.isEmpty || progress != nil)
-                    .accessibilityIdentifier("folder.askSelected")
-                    .transition(.opacity)
+                CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "고른 사진으로 질문 보내기") {
+                    guard !selectedPhotos.isEmpty else { return }
+                    isShowingFilterMenu = false
+                    isShowingQuestionCompose = true
+                }
+                .disabled(selectedPhotos.isEmpty || progress != nil)
+                .accessibilityIdentifier("folder.askSelected")
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, 24)
