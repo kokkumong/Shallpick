@@ -57,6 +57,20 @@ struct FolderPhotoSelectView: View {
                 .padding(.vertical, 10)
             }
             .scrollIndicators(.hidden)
+            // 사진 위를 옆으로 쓸면 지나간 사진을 한꺼번에 고름 (위아래는 스크롤)
+            .dragToSelect(
+                ids: visible.map(\.id),
+                isSelected: { selectedIDs.contains($0) },
+                apply: { changes in
+                    for change in changes {
+                        if change.selected {
+                            if !selectedIDs.contains(change.id) { selectedIDs.append(change.id) }
+                        } else {
+                            selectedIDs.removeAll { $0 == change.id }
+                        }
+                    }
+                }
+            )
         }
     }
 
@@ -80,6 +94,7 @@ struct FolderPhotoSelectView: View {
                 }
         }
         .buttonStyle(.plain)
+        .dragSelectItem(photo.id)
         .accessibilityLabel("사진")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

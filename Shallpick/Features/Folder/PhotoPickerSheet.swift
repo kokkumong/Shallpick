@@ -69,12 +69,29 @@ struct PhotoPickerSheet: View {
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(0..<assets.count, id: \.self) { index in
                     cell(assets.object(at: index))
+                        .dragSelectItem(index)
                 }
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 25)
         }
         .scrollIndicators(.hidden)
+        // 사진 위를 옆으로 쓸면 지나간 사진을 한꺼번에 고름 (위아래는 스크롤).
+        // 보관함이 클 수 있어 id 목록을 만들지 않고 순번으로 다룸
+        .dragToSelect(
+            ids: 0..<assets.count,
+            isSelected: { selectedIDs.contains(assets.object(at: $0).localIdentifier) },
+            apply: { changes in
+                for change in changes {
+                    let id = assets.object(at: change.id).localIdentifier
+                    if change.selected {
+                        if !selectedIDs.contains(id) { selectedIDs.append(id) }
+                    } else {
+                        selectedIDs.removeAll { $0 == id }
+                    }
+                }
+            }
+        )
     }
 
     private func cell(_ asset: PHAsset) -> some View {

@@ -185,6 +185,13 @@ struct FolderDetailView: View {
                     if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
                     selection = current
                 },
+                onDragSelect: { changes in
+                    guard var current = selection else { return }
+                    for change in changes {
+                        if change.selected { current.insert(change.id) } else { current.remove(change.id) }
+                    }
+                    selection = current
+                },
                 onOpen: { photo in
                     isShowingFilterMenu = false
                     openedPhoto = photo
@@ -514,6 +521,8 @@ private struct PhotoGrid: View {
     var selection: Set<UUID>?
     var onLongPress: (PhotoItem) -> Void = { _ in }
     var onToggle: (PhotoItem) -> Void = { _ in }
+    /// 선택 모드에서 옆으로 쓸어 여러 장을 한꺼번에 고르거나 풂
+    var onDragSelect: ([(id: UUID, selected: Bool)]) -> Void = { _ in }
     /// 보통 모드에서 사진을 누르면 크게 보기
     var onOpen: (PhotoItem) -> Void = { _ in }
 
@@ -547,6 +556,13 @@ private struct PhotoGrid: View {
         }
         .scrollIndicators(.hidden)
         .scrollPosition(id: $visiblePhotoID, anchor: .top)
+        // 선택 모드: 사진 위를 옆으로 쓸면 지나간 사진을 한꺼번에 고름 (위아래는 스크롤)
+        .dragToSelect(
+            ids: photos.map(\.id),
+            isEnabled: selection != nil,
+            isSelected: { selection?.contains($0) == true },
+            apply: onDragSelect
+        )
         .simultaneousGesture(
             MagnifyGesture()
                 .updating($magnification) { value, scale, _ in scale = value.magnification }
@@ -576,6 +592,7 @@ private struct PhotoGrid: View {
         let isSelected = selection?.contains(photo.id) == true
         return FolderPhotoCell(photo: photo)
             .matchedTransitionSource(id: photo.id, in: namespace)
+            .dragSelectItem(photo.id)
             .overlay {
                 if isSelected {
                     Rectangle().strokeBorder(Color.black800, lineWidth: 4)
