@@ -367,12 +367,15 @@ final class DemoFlowTests: XCTestCase {
         capture(app, "38-detail-otter-bottom")
         let field = app.descendants(matching: .any).matching(identifier: "photoDetail.commentInput").firstMatch
         tap(field)
-        field.typeText("This is my favorite photo")
+        field.typeText("Draft photo comment")
         capture(app, "39-detail-comment-keyboard")
         tap(app.buttons["photoDetail.sendComment"])
         XCTAssertTrue(app.alerts.firstMatch.waitForExistence(timeout: 5))
         tap(app.alerts.buttons["확인"])
-        XCTAssertEqual(field.value as? String, "This is my favorite photo", "Failed comment must retain its draft")
+        XCTAssertEqual(field.value as? String, "Draft photo comment", "Failed comment must retain its draft")
+        tap(field)
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Draft photo comment".count))
+        field.typeText("This is my favorite photo")
         tap(app.buttons["photoDetail.sendComment"])
         let comment = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "photoComment.")).firstMatch
         XCTAssertTrue(comment.waitForExistence(timeout: 8), app.debugDescription)
