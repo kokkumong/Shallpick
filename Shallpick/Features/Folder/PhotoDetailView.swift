@@ -453,7 +453,9 @@ private struct PhotoDetailPage: View {
                     }
                     .frame(minHeight: belowPhotoMinHeight, alignment: .top)
                 }
-                .padding(.bottom, 20)
+                // Keep the last comment above the floating input, including when
+                // opening a comment directly from chat.
+                .padding(.bottom, feedback.comments.isEmpty ? 20 : 120)
             }
             .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
@@ -468,12 +470,12 @@ private struct PhotoDetailPage: View {
             .animation(.snappy(duration: 0.35), value: feedback.comments.isEmpty)
             .onChange(of: scrollToCommentID) { _, id in
                 guard let id, feedback.comments.contains(where: { $0.id == id }) else { return }
-                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .bottom) }
+                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
             }
             .task(id: feedback.comments.map(\.id)) {
                 guard let id = scrollToCommentID, feedback.comments.contains(where: { $0.id == id }) else { return }
                 await Task.yield()
-                proxy.scrollTo(id, anchor: .bottom)
+                proxy.scrollTo(id, anchor: .center)
             }
         }
     }
