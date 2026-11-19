@@ -26,8 +26,10 @@
 
 - 로컬 PostgreSQL 엔진(PGlite 0.5.17)에서 마이그레이션 적용 확인: 기존 댓글의 null 좌표, 정상 좌표와 경계값, 범위 밖 값/한쪽 null/NaN/Infinity 거부, RLS 유지.
 - [일반/시연 빌드](https://github.com/kokkumong/Shallpick/actions/runs/44594676186): 두 빌드 모두 통과. 이 실행의 시뮬레이터 준비는 시간 초과로 실패했고, 이후 멈춘 종료 작업은 취소했다.
-- [ARM 시뮬레이터 실행](https://github.com/kokkumong/Shallpick/actions/runs/44598891689): 시연 빌드, 사진 추가 화면 열기, 선택/길게 누르기, 질문 작성 연결, 사진 상세와 댓글 입력까지 확인했다. 실패 응답 후 입력 문구는 남아 있었으나 자동 검사에서 입력 완료 후 달라진 입력창 이름을 찾지 못해 중단됐다. 검사 식별 방식을 수정한 재실행은 진행 중이다.
+- [최종 ARM 시뮬레이터 검사](https://github.com/kokkumong/Shallpick/actions/runs/44601201226): 시연 빌드와 네 화면 연결 검사 통과. 사진 추가 화면 열기, 선택/길게 누르기, 질문 작성 연결, 댓글 저장 실패 후 입력 유지와 재시도, 다시 열었을 때 위치/닉네임 유지, 투표 실패 후 같은 사진 유지, 이전 답변 변경, 체크로 완료를 확인했다. 실제 검사 코드는 `Section2Tests.swift`에 보관했다.
+- 앞선 [화면 검사](https://github.com/kokkumong/Shallpick/actions/runs/44598891689)는 입력 후 placeholder가 사라진 입력창을 찾지 못해 중단됐다. 앱 코드 변경 없이 검사 식별 방식을 수정하여 위 최종 실행에서 통과했다.
 - 검증 브랜치의 오프라인 데이터로 실행한다. 실제 사용자 응답이나 실제 계정 간 검증을 뜻하지 않는다.
+- 작은 화면, 동작 줄이기, 실제 사진 저장 권한, 기존 핀치/드래그 선택의 전체 회귀 검사는 이번 자동 검사에 포함하지 않았다.
 
 ## 실제 앱 캡처
 
@@ -36,6 +38,10 @@
 | 폴더 | 사진 선택 | 사진 상세 |
 | --- | --- | --- |
 | <img src="01-folder-after.png" width="230" alt="첫 칸 사진 추가와 선택 버튼"> | <img src="02-selection-after.png" width="230" alt="선택 표시와 질문 화살표"> | <img src="03-photo-after.png" width="230" alt="상시 댓글 입력창을 없앤 사진 상세"> |
+
+| 위치 댓글과 닉네임 | 요청 응답 | 응답 완료 |
+| --- | --- | --- |
+| <img src="05-comment-nickname-after.png" width="230" alt="위치에 저장된 댓글과 작성자"> | <img src="07-vote-after.png" width="230" alt="좋아 싫어 버튼과 사진 넘기기"> | <img src="09-vote-complete-after.png" width="230" alt="검토 후 체크로 완료"> |
 
 ## 팀에서 확인할 핵심 동작
 
