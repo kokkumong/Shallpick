@@ -1,0 +1,18 @@
+[
+  {
+    "file": "10-gallery-request-after.png",
+    "source": "7A35E2F5-5BEC-4F53-B72F-CD01E0E79B03.png",
+    "run": 44780820891,
+    "ci_commit": "c097324ad55c68a1d46059d046d532d1a49bf3cd",
+    "product_commit": "ec8f096",
+    "sha256": "fa0c88d63e30cdcce47a08f6116e0512a8297faf892556811599d19985375982"
+  },
+  {
+    "file": "11-gallery-selection-after.png",
+    "source": "5D6F33E1-FB89-4A05-9F1C-0D84C26A3423.png",
+    "run": 44780820891,
+    "ci_commit": "c097324ad55c68a1d46059d046d532d1a49bf3cd",
+    "product_commit": "ec8f096",
+    "sha256": "f6e5b236868f6340876e74a4d59461b2206dba9b803d87efc7fd2fec15b3fd96"
+  }
+]

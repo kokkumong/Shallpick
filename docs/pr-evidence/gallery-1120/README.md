@@ -13,4 +13,20 @@
 
 ## 검증
 
-시연 앱 빌드와 갤러리의 요청 진입, 빈 선택 차단, 질문 작성 연결, 작성 취소 후 선택 유지 검사를 진행 중이다. 실제 계정 간 전송이나 새 DB 변경은 이번 범위에 포함하지 않는다.
+[iOS 시연 빌드와 시뮬레이터 검사](https://github.com/kokkumong/Shallpick/actions/runs/44780820891)를 통과했다. iPhone 17 Pro 시뮬레이터의 오프라인 시연 데이터로 다음 동작을 확인했다.
+
+- 일반 갤러리의 ‘요청하기’에서 기존 선택 모드로 진입
+- 선택한 사진이 없을 때 요청 차단, 사진 선택 후 활성화
+- 기존 질문 작성 화면 연결과 작성 취소 후 선택 유지
+- 선택 해제 시 다시 비활성화, 선택 모드 종료와 상단 ‘선택’ 진입
+
+실제 계정 간 전송은 검증하지 않았다. 새 DB 변경은 없다.
+
+## 수정 전후
+
+모두 실제 iOS 시뮬레이터 캡처다. 수정 전은 이전 PR 검증본이며, 수정 후는 위 검사에서 생성한 원본이다. 캡처 출처와 파일 해시는 [capture-provenance.json](capture-provenance.json)에 기록했다.
+
+| 상태 | 수정 전 | 수정 후 |
+| --- | --- | --- |
+| 일반 갤러리 | <img src="../figma-section2/01-folder-after.png" width="230"> | <img src="10-gallery-request-after.png" width="230"> |
+| 사진 선택 | <img src="../figma-section2/02-selection-after.png" width="230"> | <img src="11-gallery-selection-after.png" width="230"> |
