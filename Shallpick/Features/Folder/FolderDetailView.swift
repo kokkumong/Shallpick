@@ -1,7 +1,7 @@
 import Photos
 import SwiftUI
 
-/// Figma 수정할것: 폴더안 / 선택 클릭 or 꾹 눌렀을 때 (701:24531, 701:24689)
+/// Figma 수정 11월20 오후3:07: 폴더안 / 사진 선택 (778:9411, 778:9555)
 struct FolderDetailView: View {
     let folder: Folder
     var avatarURL: URL?
@@ -418,23 +418,37 @@ struct FolderDetailView: View {
 
     // MARK: - 하단 (190:22267)
 
-    /// 사진 추가는 첫 그리드 칸. 선택 중에만 오른쪽 화살표로 질문을 작성합니다.
+    /// 요청하기 → 사진 선택 → 기존 질문 작성. 사진 추가는 첫 그리드 칸을 사용합니다.
+    private var canRequest: Bool {
+        progress == nil && (selection == nil ? !photos.isEmpty : !selectedPhotos.isEmpty)
+    }
+
     private var bottomBar: some View {
         HStack {
             PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
 
             Spacer()
 
-            if selection != nil {
-                CircleIconButton(icon: .iconNext, style: .filled, accessibilityLabel: "고른 사진으로 질문 보내기") {
-                    guard !selectedPhotos.isEmpty else { return }
-                    isShowingFilterMenu = false
+            Button {
+                isShowingFilterMenu = false
+                if selection == nil {
+                    selection = []
+                } else if !selectedPhotos.isEmpty {
                     isShowingQuestionCompose = true
                 }
-                .disabled(selectedPhotos.isEmpty || progress != nil)
-                .accessibilityIdentifier("folder.askSelected")
-                .transition(.opacity)
+            } label: {
+                Text("요청하기")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 45)
+                    .shadowedBackground(Color.black800, in: Capsule())
             }
+            .buttonStyle(ShallpickPressStyle())
+            .disabled(!canRequest)
+            .opacity(canRequest ? 1 : 0.4)
+            .accessibilityIdentifier("folder.askSelected")
+            .accessibilityHint(selection == nil ? "요청할 사진을 선택해요" : "고른 사진으로 요청을 작성해요")
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 33)
@@ -545,6 +559,7 @@ private struct PhotoGrid: View {
     @SceneStorage("folder.photoGrid.columns") private var columnCount = 4
     @State private var visiblePhotoID: UUID?
     @GestureState private var magnification: CGFloat = 1
+    private let photoSpacing: CGFloat = 6
 
     // 손을 뗄 때만 기준 열 수를 저장합니다. 조절 중 레이아웃이 바뀌어도
     // 같은 핀치의 시작 기준이 달라지지 않게 합니다.
@@ -553,12 +568,12 @@ private struct PhotoGrid: View {
     }
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: displayedColumns)
+        Array(repeating: GridItem(.flexible(), spacing: photoSpacing), count: displayedColumns)
     }
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: photoSpacing) {
                 if selection == nil {
                     Button(action: onAdd) {
                         Color.white
