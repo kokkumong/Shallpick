@@ -1,8 +1,7 @@
 import Photos
 import SwiftUI
 
-/// 폴더를 눌렀을 때 들어가는 화면: 사진 4열 그리드 + 상단(뒤로/이름/검색/채팅) + 하단(필터/수달/추가)
-/// Figma: 폴더안 (246:5208)
+/// Figma 수정 11월20 오후3:07: 폴더안 / 사진 선택 (778:9411, 778:9555)
 struct FolderDetailView: View {
     let folder: Folder
     var avatarURL: URL?
@@ -169,35 +168,38 @@ struct FolderDetailView: View {
 
     @ViewBuilder
     private var content: some View {
-        if photos.isEmpty {
-            EmptyPhotoView()
-        } else {
-            PhotoGrid(
-                photos: photos.filtered(by: filters),
-                namespace: photoNamespace,
-                selection: selection,
-                onLongPress: { photo in
-                    isShowingFilterMenu = false
-                    selection = [photo.id]
-                },
-                onToggle: { photo in
-                    guard var current = selection else { return }
-                    if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
-                    selection = current
-                },
-                onDragSelect: { changes in
-                    guard var current = selection else { return }
-                    for change in changes {
-                        if change.selected { current.insert(change.id) } else { current.remove(change.id) }
-                    }
-                    selection = current
-                },
-                onOpen: { photo in
-                    isShowingFilterMenu = false
-                    openedPhoto = photo
+        PhotoGrid(
+            photos: photos.filtered(by: filters),
+            namespace: photoNamespace,
+            selection: selection,
+            onLongPress: { photo in
+                isShowingFilterMenu = false
+                selection = [photo.id]
+            },
+            onToggle: { photo in
+                guard var current = selection else { return }
+                if current.contains(photo.id) { current.remove(photo.id) } else { current.insert(photo.id) }
+                selection = current
+            },
+            onDragSelect: { changes in
+                guard var current = selection else { return }
+                for change in changes {
+                    if change.selected { current.insert(change.id) } else { current.remove(change.id) }
                 }
-            )
-            .refreshable { await reload() }
+                selection = current
+            },
+            onAdd: {
+                isShowingFilterMenu = false
+                isShowingPhotoPicker = true
+            },
+            onOpen: { photo in
+                isShowingFilterMenu = false
+                openedPhoto = photo
+            }
+        )
+        .refreshable { await reload() }
+        .overlay {
+            if photos.isEmpty { EmptyPhotoView().allowsHitTesting(false) }
         }
     }
 
@@ -360,7 +362,18 @@ struct FolderDetailView: View {
                 .transition(.opacity)
             } else {
                 HStack(spacing: 8) {
-                    CircleIconButton(icon: .iconSearch, iconSize: 27, accessibilityLabel: "검색", action: onSearch)
+                    Button {
+                        isShowingFilterMenu = false
+                        selection = []
+                    } label: {
+                        Text("선택")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(Color.black800)
+                            .frame(width: 60, height: 45)
+                            .shadowedBackground(.white, in: Capsule())
+                    }
+                    .buttonStyle(ShallpickPressStyle())
+                    .accessibilityIdentifier("folder.select")
                     CircleIconButton(icon: .iconChat, accessibilityLabel: "채팅") {
                         if let onOpenChat {
                             onOpenChat()
@@ -397,30 +410,37 @@ struct FolderDetailView: View {
 
     // MARK: - 하단 (190:22267)
 
-    /// 보통 화면: 필터 ... + / 선택 모드 (397:4908): 필터 ... 수달. 필터는 늘 같은 자리
+    /// 요청하기 → 사진 선택 → 기존 질문 작성. 사진 추가는 첫 그리드 칸을 사용합니다.
+    private var canRequest: Bool {
+        progress == nil && (selection == nil ? !photos.isEmpty : !selectedPhotos.isEmpty)
+    }
+
     private var bottomBar: some View {
         HStack {
             PhotoFilterButton(isOpen: $isShowingFilterMenu, selection: $filters, avatarURL: avatarURL)
 
             Spacer()
 
-            // 오른쪽 아래 자리: + 와 수달이 서로 바뀜
-            ZStack {
+            Button {
+                isShowingFilterMenu = false
                 if selection == nil {
-                    CircleIconButton(icon: .iconPlus, accessibilityLabel: "사진 올리기") {
-                        isShowingFilterMenu = false
-                        isShowingPhotoPicker = true
-                    }
-                    .transition(.opacity)
-                } else {
-                    OtterButton(accessibilityLabel: "고른 사진으로 질문 보내기") {
-                        guard !selectedPhotos.isEmpty else { return }
-                        isShowingFilterMenu = false
-                        isShowingQuestionCompose = true
-                    }
-                    .transition(.opacity)
+                    selection = []
+                } else if !selectedPhotos.isEmpty {
+                    isShowingQuestionCompose = true
                 }
+            } label: {
+                Text("요청하기")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .frame(height: 45)
+                    .shadowedBackground(Color.black800, in: Capsule())
             }
+            .buttonStyle(ShallpickPressStyle())
+            .disabled(!canRequest)
+            .opacity(canRequest ? 1 : 0.4)
+            .accessibilityIdentifier("folder.askSelected")
+            .accessibilityHint(selection == nil ? "요청할 사진을 선택해요" : "고른 사진으로 요청을 작성해요")
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 33)
@@ -523,6 +543,7 @@ private struct PhotoGrid: View {
     var onToggle: (PhotoItem) -> Void = { _ in }
     /// 선택 모드에서 옆으로 쓸어 여러 장을 한꺼번에 고르거나 풂
     var onDragSelect: ([(id: UUID, selected: Bool)]) -> Void = { _ in }
+    var onAdd: () -> Void = {}
     /// 보통 모드에서 사진을 누르면 크게 보기
     var onOpen: (PhotoItem) -> Void = { _ in }
 
@@ -530,6 +551,7 @@ private struct PhotoGrid: View {
     @SceneStorage("folder.photoGrid.columns") private var columnCount = 4
     @State private var visiblePhotoID: UUID?
     @GestureState private var magnification: CGFloat = 1
+    private let photoSpacing: CGFloat = 6
 
     // 손을 뗄 때만 기준 열 수를 저장합니다. 조절 중 레이아웃이 바뀌어도
     // 같은 핀치의 시작 기준이 달라지지 않게 합니다.
@@ -538,12 +560,27 @@ private struct PhotoGrid: View {
     }
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 10), count: displayedColumns)
+        Array(repeating: GridItem(.flexible(), spacing: photoSpacing), count: displayedColumns)
     }
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: photoSpacing) {
+                if selection == nil {
+                    Button(action: onAdd) {
+                        Color.white
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay {
+                                Image(.iconPlus)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 24, height: 24)
+                                    .foregroundStyle(Color.black800)
+                            }
+                    }
+                    .buttonStyle(ShallpickPressStyle())
+                    .accessibilityLabel("사진 올리기")
+                    .accessibilityIdentifier("folder.addPhoto")
+                }
                 ForEach(photos) { photo in
                     cell(photo)
                         .id(photo.id)
@@ -636,7 +673,7 @@ private struct EmptyPhotoView: View {
                 Text("아직 사진이 없어요")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.black800)
-                Text("+ 버튼을 눌러 사진을 올려보세요")
+                Text("첫 번째 + 칸을 눌러 사진을 올려보세요")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.black400)
             }
